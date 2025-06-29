@@ -185,11 +185,19 @@ HOST=0.0.0.0
 PORT=8051
 TRANSPORT=sse
 
-# OpenAI API Configuration
-OPENAI_API_KEY=your_openai_api_key
+# Embedding Model Configuration (supports local LM Studio)
+EMBEDDING_API_KEY=your_embedding_api_key  # or "lm-studio" for local
+EMBEDDING_BASE_URL=https://api.openai.com/v1  # or http://127.0.0.1:1234/v1 for local
+EMBEDDING_MODEL=text-embedding-3-small  # or text-embedding-nomic-embed-text-v1.5 for local
 
-# LLM for summaries and contextual embeddings
-MODEL_CHOICE=gpt-4.1-nano
+# LLM Configuration for summaries and contextual embeddings
+LLM_API_KEY=your_llm_api_key
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4.1-nano
+
+# Reranker Configuration (local transformers with intelligent fallback)
+RERANKER_MODEL_PATH=Qwen/Qwen3-Reranker-4B
+RERANKER_DEVICE=auto
 
 # RAG Strategies (set to "true" or "false", default to "false")
 USE_CONTEXTUAL_EMBEDDINGS=false
@@ -208,12 +216,59 @@ NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_neo4j_password
 ```
 
+### Local LM Studio Support
+
+The server now supports **native LM Studio integration** for embeddings, providing better compatibility and performance with local models:
+
+- **Embedding Service**: Uses optimized `requests` library for direct HTTP calls to LM Studio
+- **LLM Service**: Continues to use OpenAI client for chat completions
+- **Separate Configuration**: Independent API keys, base URLs, and models for each service
+
+**Example Local Configuration:**
+```env
+# Local LM Studio for embeddings
+EMBEDDING_API_KEY=lm-studio
+EMBEDDING_BASE_URL=http://127.0.0.1:1234/v1
+EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5
+
+# Local transformers for reranking with intelligent fallback
+RERANKER_MODEL_PATH=Qwen/Qwen3-Reranker-4B
+RERANKER_DEVICE=auto
+
+# Remote service for LLM
+LLM_API_KEY=your_remote_api_key
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4.1-mini
+```
+
+### 🎯 **Smart Qwen3-Reranker-4B Integration**
+
+The server features **intelligent reranking** with automatic fallback:
+
+**🥇 Primary: Qwen3-Reranker-4B (Transformers)**
+- **Model**: Official `Qwen/Qwen3-Reranker-4B` via transformers library
+- **Method**: Direct logits extraction following HuggingFace specification
+- **Accuracy**: Maximum precision with true probability scores
+- **Requirements**: Optimized 4B model, PyTorch + transformers
+
+**🥈 Fallback: Embedding Similarity**
+- **Method**: Cosine similarity using local embedding model
+- **Speed**: Instant availability, no large downloads
+- **Quality**: Good relevance ranking for most use cases
+- **Compatibility**: Works with existing LM Studio setup
+
+**Key Advantages:**
+- ✅ **Zero Configuration**: Automatically selects best available method
+- ✅ **Graceful Degradation**: Always functional, even without large models
+- ✅ **Optimal Performance**: Uses true reranker when available
+- ✅ **Local Privacy**: All processing happens locally
+
 ### RAG Strategy Options
 
 The Crawl4AI RAG MCP server supports four powerful RAG strategies that can be enabled independently:
 
 #### 1. **USE_CONTEXTUAL_EMBEDDINGS**
-When enabled, this strategy enhances each chunk's embedding with additional context from the entire document. The system passes both the full document and the specific chunk to an LLM (configured via `MODEL_CHOICE`) to generate enriched context that gets embedded alongside the chunk content.
+When enabled, this strategy enhances each chunk's embedding with additional context from the entire document. The system passes both the full document and the specific chunk to an LLM (configured via `LLM_MODEL`) to generate enriched context that gets embedded alongside the chunk content.
 
 - **When to use**: Enable this when you need high-precision retrieval where context matters, such as technical documentation where terms might have different meanings in different sections.
 - **Trade-offs**: Slower indexing due to LLM calls for each chunk, but significantly better retrieval accuracy.
@@ -363,7 +418,12 @@ Add this server to your MCP configuration for Claude Desktop, Windsurf, or any o
       "args": ["path/to/crawl4ai-mcp/src/crawl4ai_mcp.py"],
       "env": {
         "TRANSPORT": "stdio",
-        "OPENAI_API_KEY": "your_openai_api_key",
+        "EMBEDDING_API_KEY": "your_embedding_api_key",
+        "EMBEDDING_BASE_URL": "https://api.openai.com/v1",
+        "EMBEDDING_MODEL": "text-embedding-3-small",
+        "LLM_API_KEY": "your_llm_api_key",
+        "LLM_BASE_URL": "https://api.openai.com/v1",
+        "LLM_MODEL": "gpt-4.1-nano",
         "SUPABASE_URL": "your_supabase_url",
         "SUPABASE_SERVICE_KEY": "your_supabase_service_key",
         "USE_KNOWLEDGE_GRAPH": "false",
@@ -383,10 +443,15 @@ Add this server to your MCP configuration for Claude Desktop, Windsurf, or any o
   "mcpServers": {
     "crawl4ai-rag": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", 
-               "-e", "TRANSPORT", 
-               "-e", "OPENAI_API_KEY", 
-               "-e", "SUPABASE_URL", 
+      "args": ["run", "--rm", "-i",
+               "-e", "TRANSPORT",
+               "-e", "EMBEDDING_API_KEY",
+               "-e", "EMBEDDING_BASE_URL",
+               "-e", "EMBEDDING_MODEL",
+               "-e", "LLM_API_KEY",
+               "-e", "LLM_BASE_URL",
+               "-e", "LLM_MODEL",
+               "-e", "SUPABASE_URL",
                "-e", "SUPABASE_SERVICE_KEY",
                "-e", "USE_KNOWLEDGE_GRAPH",
                "-e", "NEO4J_URI",
@@ -395,7 +460,12 @@ Add this server to your MCP configuration for Claude Desktop, Windsurf, or any o
                "mcp/crawl4ai"],
       "env": {
         "TRANSPORT": "stdio",
-        "OPENAI_API_KEY": "your_openai_api_key",
+        "EMBEDDING_API_KEY": "your_embedding_api_key",
+        "EMBEDDING_BASE_URL": "https://api.openai.com/v1",
+        "EMBEDDING_MODEL": "text-embedding-3-small",
+        "LLM_API_KEY": "your_llm_api_key",
+        "LLM_BASE_URL": "https://api.openai.com/v1",
+        "LLM_MODEL": "gpt-4.1-nano",
         "SUPABASE_URL": "your_supabase_url",
         "SUPABASE_SERVICE_KEY": "your_supabase_service_key",
         "USE_KNOWLEDGE_GRAPH": "false",

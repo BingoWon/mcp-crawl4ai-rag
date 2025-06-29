@@ -6,7 +6,6 @@ the appropriate crawl method based on URL type (sitemap, txt file, or regular we
 Also includes AI hallucination detection and repository parsing tools using Neo4j knowledge graphs.
 """
 from mcp.server.fastmcp import FastMCP, Context
-from sentence_transformers import CrossEncoder
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -24,22 +23,41 @@ import re
 import concurrent.futures
 import sys
 
+from local_reranker import create_reranker
+
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
+
+from apple_content_extractor import AppleContentExtractor
 
 # Add knowledge_graphs folder to path for importing knowledge graph modules
 knowledge_graphs_path = Path(__file__).resolve().parent.parent / 'knowledge_graphs'
 sys.path.append(str(knowledge_graphs_path))
 
+async def is_url_already_crawled(client: Client, url: str) -> bool:
+    """
+    Check if a URL has already been crawled and stored in the database.
+
+    Args:
+        client: Supabase client instance
+        url: URL to check
+
+    Returns:
+        bool: True if URL exists in database, False otherwise
+    """
+    try:
+        result = client.table('crawled_pages').select('url').eq('url', url).limit(1).execute()
+        return len(result.data) > 0
+    except Exception as e:
+        print(f"⚠️ Database check failed for {url}: {e}")
+        return False
+
 from utils import (
-    get_supabase_client, 
-    add_documents_to_supabase, 
+    add_documents_to_supabase,
     search_documents,
     extract_code_blocks,
     generate_code_example_summary,
     add_code_examples_to_supabase,
-    update_source_info,
-    extract_source_summary,
-    search_code_examples
+    get_database_client
 )
 
 # Import knowledge graph modules
@@ -118,7 +136,7 @@ class Crawl4AIContext:
     """Context for the Crawl4AI MCP server."""
     crawler: AsyncWebCrawler
     supabase_client: Client
-    reranking_model: Optional[CrossEncoder] = None
+    reranking_model: Optional[Any] = None  # Qwen3Reranker or EmbeddingReranker
     knowledge_validator: Optional[Any] = None  # KnowledgeGraphValidator when available
     repo_extractor: Optional[Any] = None       # DirectNeo4jExtractor when available
 
@@ -143,17 +161,20 @@ async def crawl4ai_lifespan(server: FastMCP) -> AsyncIterator[Crawl4AIContext]:
     crawler = AsyncWebCrawler(config=browser_config)
     await crawler.__aenter__()
     
-    # Initialize Supabase client
-    supabase_client = get_supabase_client()
+    # Initialize PostgreSQL client
+    postgres_client = await get_database_client()
     
-    # Initialize cross-encoder model for reranking if enabled
+    # Initialize smart reranker if enabled
     reranking_model = None
-    if os.getenv("USE_RERANKING", "false") == "true":
+    if os.getenv("USE_RERANKING", "false") == "true" and RERANKER_AVAILABLE:
         try:
-            reranking_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+            reranking_model = create_reranker()
+            print("✅ Reranker initialized successfully")
         except Exception as e:
-            print(f"Failed to load reranking model: {e}")
+            print(f"❌ Failed to initialize reranker: {e}")
             reranking_model = None
+    elif os.getenv("USE_RERANKING", "false") == "true":
+        print("⚠️  Reranking enabled but reranker modules not available")
     
     # Initialize Neo4j components if configured and enabled
     knowledge_validator = None
@@ -193,7 +214,7 @@ async def crawl4ai_lifespan(server: FastMCP) -> AsyncIterator[Crawl4AIContext]:
     try:
         yield Crawl4AIContext(
             crawler=crawler,
-            supabase_client=supabase_client,
+            supabase_client=postgres_client,
             reranking_model=reranking_model,
             knowledge_validator=knowledge_validator,
             repo_extractor=repo_extractor
@@ -220,45 +241,40 @@ mcp = FastMCP(
     description="MCP server for RAG and web crawling with Crawl4AI",
     lifespan=crawl4ai_lifespan,
     host=os.getenv("HOST", "0.0.0.0"),
-    port=os.getenv("PORT", "8051")
+    port=int(os.getenv("PORT") or "8051")
 )
 
-def rerank_results(model: CrossEncoder, query: str, results: List[Dict[str, Any]], content_key: str = "content") -> List[Dict[str, Any]]:
+def rerank_results(model: Any, query: str, results: List[Dict[str, Any]], content_key: str = "content") -> List[Dict[str, Any]]:
     """
-    Rerank search results using a cross-encoder model.
-    
+    Rerank search results using Qwen3-Reranker-4B.
+
     Args:
-        model: The cross-encoder model to use for reranking
+        model: The Qwen3-Reranker model instance
         query: The search query
         results: List of search results
         content_key: The key in each result dict that contains the text content
-        
+
     Returns:
-        Reranked list of results
+        Reranked list of results sorted by relevance
     """
     if not model or not results:
         return results
-    
+
     try:
-        # Extract content from results
-        texts = [result.get(content_key, "") for result in results]
-        
-        # Create pairs of [query, document] for the cross-encoder
-        pairs = [[query, text] for text in texts]
-        
-        # Get relevance scores from the cross-encoder
+        # Extract content and create query-document pairs
+        pairs = [(query, result.get(content_key, "")) for result in results]
+
+        # Get relevance scores
         scores = model.predict(pairs)
-        
-        # Add scores to results and sort by score (descending)
+
+        # Add scores and sort by relevance
         for i, result in enumerate(results):
             result["rerank_score"] = float(scores[i])
-        
-        # Sort by rerank score
-        reranked = sorted(results, key=lambda x: x.get("rerank_score", 0), reverse=True)
-        
-        return reranked
+
+        return sorted(results, key=lambda x: x.get("rerank_score", 0), reverse=True)
+
     except Exception as e:
-        print(f"Error during reranking: {e}")
+        print(f"❌ Reranking error: {e}")
         return results
 
 def is_sitemap(url: str) -> bool:
@@ -276,14 +292,53 @@ def is_sitemap(url: str) -> bool:
 def is_txt(url: str) -> bool:
     """
     Check if a URL is a text file.
-    
+
     Args:
         url: URL to check
-        
+
     Returns:
         True if the URL is a text file, False otherwise
     """
     return url.endswith('.txt')
+
+def is_apple_documentation(url: str) -> bool:
+    """
+    Check if a URL is Apple developer documentation.
+
+    Args:
+        url: URL to check
+
+    Returns:
+        True if the URL is Apple documentation, False otherwise
+    """
+    return 'developer.apple.com/documentation/' in url
+
+async def crawl_apple_documentation(url: str) -> List[Dict[str, Any]]:
+    """
+    Crawl Apple documentation using the specialized Apple extractor.
+
+    Args:
+        url: Apple documentation URL
+
+    Returns:
+        List of dictionaries with URL and markdown content
+    """
+    if not APPLE_EXTRACTOR_AVAILABLE:
+        print(f"⚠️  Apple extractor not available, falling back to standard crawling for {url}")
+        return []
+
+    try:
+        async with AppleContentExtractor() as extractor:
+            result = await extractor.extract_clean_content(url)
+
+            if result["success"]:
+                return [{'url': url, 'markdown': result["clean_content"]}]
+            else:
+                print(f"❌ Apple extraction failed for {url}: {result.get('error', 'Unknown error')}")
+                return []
+    except Exception as e:
+        print(f"❌ Apple extractor error for {url}: {e}")
+        return []
 
 def parse_sitemap(sitemap_url: str) -> List[str]:
     """
@@ -352,24 +407,7 @@ def smart_chunk_markdown(text: str, chunk_size: int = 5000) -> List[str]:
 
     return chunks
 
-def extract_section_info(chunk: str) -> Dict[str, Any]:
-    """
-    Extracts headers and stats from a chunk.
-    
-    Args:
-        chunk: Markdown chunk
-        
-    Returns:
-        Dictionary with headers and stats
-    """
-    headers = re.findall(r'^(#+)\s+(.+)$', chunk, re.MULTILINE)
-    header_str = '; '.join([f'{h[0]} {h[1]}' for h in headers]) if headers else ''
 
-    return {
-        "headers": header_str,
-        "char_count": len(chunk),
-        "word_count": len(chunk.split())
-    }
 
 def process_code_example(args):
     """
@@ -405,11 +443,26 @@ async def crawl_single_page(ctx: Context, url: str) -> str:
         crawler = ctx.request_context.lifespan_context.crawler
         supabase_client = ctx.request_context.lifespan_context.supabase_client
         
-        # Configure the crawl
-        run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
-        
-        # Crawl the page
-        result = await crawler.arun(url=url, config=run_config)
+        # Use intelligent URL routing for single page crawl
+        if is_apple_documentation(url):
+            # For Apple documentation, use specialized Apple extractor
+            apple_results = await crawl_apple_documentation(url)
+            if apple_results:
+                result_data = apple_results[0]
+                # Simulate crawler result structure
+                class MockResult:
+                    def __init__(self, success, markdown):
+                        self.success = success
+                        self.markdown = markdown
+                result = MockResult(True, result_data['markdown'])
+            else:
+                result = MockResult(False, None)
+        else:
+            # Configure the crawl for standard pages
+            run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
+
+            # Crawl the page
+            result = await crawler.arun(url=url, config=run_config)
         
         if result.success and result.markdown:
             # Extract source_id
@@ -431,23 +484,18 @@ async def crawl_single_page(ctx: Context, url: str) -> str:
                 chunk_numbers.append(i)
                 contents.append(chunk)
                 
-                # Extract metadata
-                meta = extract_section_info(chunk)
-                meta["chunk_index"] = i
-                meta["url"] = url
-                meta["source"] = source_id
-                meta["crawl_time"] = str(asyncio.current_task().get_coro().__name__)
+                # Simple metadata
+                meta = {
+                    "chunk_index": i,
+                    "url": url,
+                    "source": source_id
+                }
                 metadatas.append(meta)
-                
-                # Accumulate word count
-                total_word_count += meta.get("word_count", 0)
             
             # Create url_to_full_document mapping
             url_to_full_document = {url: result.markdown}
             
-            # Update source information FIRST (before inserting documents)
-            source_summary = extract_source_summary(source_id, result.markdown[:5000])  # Use first 5000 chars for summary
-            update_source_info(supabase_client, source_id, source_summary, total_word_count)
+
             
             # Add documentation chunks to Supabase (AFTER source exists)
             add_documents_to_supabase(supabase_client, urls, chunk_numbers, contents, metadatas, url_to_full_document)
@@ -552,11 +600,15 @@ async def smart_crawl_url(ctx: Context, url: str, max_depth: int = 3, max_concur
         crawler = ctx.request_context.lifespan_context.crawler
         supabase_client = ctx.request_context.lifespan_context.supabase_client
         
-        # Determine the crawl strategy
+        # Determine the crawl strategy with intelligent URL routing
         crawl_results = []
         crawl_type = None
-        
-        if is_txt(url):
+
+        if is_apple_documentation(url):
+            # For Apple documentation, use specialized Apple extractor
+            crawl_results = await crawl_apple_documentation(url)
+            crawl_type = "apple_documentation"
+        elif is_txt(url):
             # For text files, use simple crawl
             crawl_results = await crawl_markdown_file(crawler, url)
             crawl_type = "text_file"
@@ -572,8 +624,13 @@ async def smart_crawl_url(ctx: Context, url: str, max_depth: int = 3, max_concur
             crawl_results = await crawl_batch(crawler, sitemap_urls, max_concurrent=max_concurrent)
             crawl_type = "sitemap"
         else:
-            # For regular URLs, use recursive crawl
-            crawl_results = await crawl_recursive_internal_links(crawler, [url], max_depth=max_depth, max_concurrent=max_concurrent)
+            # For regular URLs, use recursive crawl with database checking
+            crawl_results = await crawl_recursive_internal_links(
+                crawler, [url],
+                max_depth=max_depth,
+                max_concurrent=max_concurrent,
+                supabase_client=supabase_client
+            )
             crawl_type = "webpage"
         
         if not crawl_results:
@@ -592,7 +649,6 @@ async def smart_crawl_url(ctx: Context, url: str, max_depth: int = 3, max_concur
         
         # Track sources and their content
         source_content_map = {}
-        source_word_counts = {}
         
         # Process documentation chunks
         for doc in crawl_results:
@@ -607,24 +663,20 @@ async def smart_crawl_url(ctx: Context, url: str, max_depth: int = 3, max_concur
             # Store content for source summary generation
             if source_id not in source_content_map:
                 source_content_map[source_id] = md[:5000]  # Store first 5000 chars
-                source_word_counts[source_id] = 0
             
             for i, chunk in enumerate(chunks):
                 urls.append(source_url)
                 chunk_numbers.append(i)
                 contents.append(chunk)
                 
-                # Extract metadata
-                meta = extract_section_info(chunk)
-                meta["chunk_index"] = i
-                meta["url"] = source_url
-                meta["source"] = source_id
-                meta["crawl_type"] = crawl_type
-                meta["crawl_time"] = str(asyncio.current_task().get_coro().__name__)
+                # Simple metadata
+                meta = {
+                    "chunk_index": i,
+                    "url": source_url,
+                    "source": source_id,
+                    "crawl_type": crawl_type
+                }
                 metadatas.append(meta)
-                
-                # Accumulate word count
-                source_word_counts[source_id] += meta.get("word_count", 0)
                 
                 chunk_count += 1
         
@@ -633,14 +685,7 @@ async def smart_crawl_url(ctx: Context, url: str, max_depth: int = 3, max_concur
         for doc in crawl_results:
             url_to_full_document[doc['url']] = doc['markdown']
         
-        # Update source information for each unique source FIRST (before inserting documents)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            source_summary_args = [(source_id, content) for source_id, content in source_content_map.items()]
-            source_summaries = list(executor.map(lambda args: extract_source_summary(args[0], args[1]), source_summary_args))
-        
-        for (source_id, _), summary in zip(source_summary_args, source_summaries):
-            word_count = source_word_counts.get(source_id, 0)
-            update_source_info(supabase_client, source_id, summary, word_count)
+
         
         # Add documentation chunks to Supabase (AFTER sources exist)
         batch_size = 20
@@ -649,7 +694,6 @@ async def smart_crawl_url(ctx: Context, url: str, max_depth: int = 3, max_concur
         # Extract and process code examples from all documents only if enabled
         extract_code_examples_enabled = os.getenv("USE_AGENTIC_RAG", "false") == "true"
         if extract_code_examples_enabled:
-            all_code_blocks = []
             code_urls = []
             code_chunk_numbers = []
             code_examples = []
@@ -1790,16 +1834,24 @@ async def crawl_batch(crawler: AsyncWebCrawler, urls: List[str], max_concurrent:
     results = await crawler.arun_many(urls=urls, config=crawl_config, dispatcher=dispatcher)
     return [{'url': r.url, 'markdown': r.markdown} for r in results if r.success and r.markdown]
 
-async def crawl_recursive_internal_links(crawler: AsyncWebCrawler, start_urls: List[str], max_depth: int = 3, max_concurrent: int = 10) -> List[Dict[str, Any]]:
+async def crawl_recursive_internal_links(
+    crawler: AsyncWebCrawler,
+    start_urls: List[str],
+    max_depth: int = 3,
+    max_concurrent: int = 10,
+    supabase_client: Optional[Client] = None
+) -> List[Dict[str, Any]]:
     """
     Recursively crawl internal links from start URLs up to a maximum depth.
-    
+    Uses database to check for already crawled URLs to avoid duplicates.
+
     Args:
         crawler: AsyncWebCrawler instance
         start_urls: List of starting URLs
         max_depth: Maximum recursion depth
         max_concurrent: Maximum number of concurrent browser sessions
-        
+        supabase_client: Supabase client for database checks
+
     Returns:
         List of dictionaries with URL and markdown content
     """
@@ -1818,8 +1870,23 @@ async def crawl_recursive_internal_links(crawler: AsyncWebCrawler, start_urls: L
     current_urls = set([normalize_url(u) for u in start_urls])
     results_all = []
 
-    for depth in range(max_depth):
-        urls_to_crawl = [normalize_url(url) for url in current_urls if normalize_url(url) not in visited]
+    for _ in range(max_depth):
+        urls_to_crawl = []
+
+        for url in current_urls:
+            normalized_url = normalize_url(url)
+
+            # Check memory cache first (fast path)
+            if normalized_url in visited:
+                continue
+
+            # Check database if client is available
+            if supabase_client and await is_url_already_crawled(supabase_client, normalized_url):
+                visited.add(normalized_url)  # Update memory cache
+                continue
+
+            urls_to_crawl.append(normalized_url)
+
         if not urls_to_crawl:
             break
 
@@ -1832,10 +1899,21 @@ async def crawl_recursive_internal_links(crawler: AsyncWebCrawler, start_urls: L
 
             if result.success and result.markdown:
                 results_all.append({'url': result.url, 'markdown': result.markdown})
+
+                # Collect next level URLs, checking both memory and database
                 for link in result.links.get("internal", []):
                     next_url = normalize_url(link["href"])
-                    if next_url not in visited:
-                        next_level_urls.add(next_url)
+
+                    # Skip if already in memory cache
+                    if next_url in visited:
+                        continue
+
+                    # Skip if already in database (when client available)
+                    if supabase_client and await is_url_already_crawled(supabase_client, next_url):
+                        visited.add(next_url)  # Update memory cache
+                        continue
+
+                    next_level_urls.add(next_url)
 
         current_urls = next_level_urls
 
