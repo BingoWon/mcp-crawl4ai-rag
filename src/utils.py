@@ -26,31 +26,19 @@ llm_client = openai.OpenAI(
 # LLM configuration
 LLM_MODEL = os.getenv("LLM_MODEL")
 
-# Import embedding provider
+# Import unified embedding module
 try:
-    from .embedding_provider import create_embedder
+    from embedding import get_embedder, create_embeddings_batch
     EMBEDDING_AVAILABLE = True
 except ImportError:
-    try:
-        from embedding_provider import create_embedder
-        EMBEDDING_AVAILABLE = True
-    except ImportError:
-        EMBEDDING_AVAILABLE = False
-        print("⚠️  Embedding provider not available. Install transformers and torch.")
+    EMBEDDING_AVAILABLE = False
+    print("⚠️  Unified embedding module not available. Install transformers and torch.")
 
-# Global embedder instance (lazy initialization)
-_embedder = None
+    def get_embedder():
+        return None
 
-def get_embedder():
-    """Get or create the global embedding provider instance."""
-    global _embedder
-    if _embedder is None and EMBEDDING_AVAILABLE:
-        try:
-            _embedder = create_embedder()
-        except Exception as e:
-            print(f"❌ Failed to initialize embedding provider: {e}")
-            _embedder = None
-    return _embedder
+    def create_embeddings_batch(texts):
+        return [None] * len(texts)
 
 async def get_database_client() -> PostgreSQLClient:
     """
@@ -729,7 +717,7 @@ async def _search_code_examples_async(
 
 
 # Synchronous wrapper functions for backward compatibility
-def add_documents_to_supabase(client, urls, chunk_numbers, contents, metadatas, url_to_full_document, batch_size=20):
+def add_documents_to_database(client, urls, chunk_numbers, contents, metadatas, url_to_full_document, batch_size=20):
     """Synchronous wrapper for add_documents_to_database."""
     return asyncio.run(add_documents_to_database(client, urls, chunk_numbers, contents, metadatas, url_to_full_document, batch_size))
 
@@ -737,7 +725,7 @@ def search_documents(client, query, match_count=10, filter_metadata=None):
     """Synchronous wrapper for search_documents."""
     return asyncio.run(_search_documents_async(client, query, match_count, filter_metadata))
 
-def add_code_examples_to_supabase(client, urls, chunk_numbers, code_examples, summaries, metadatas, batch_size=20):
+def add_code_examples_to_database(client, urls, chunk_numbers, code_examples, summaries, metadatas, batch_size=20):
     """Synchronous wrapper for add_code_examples_to_database."""
     return asyncio.run(add_code_examples_to_database(client, urls, chunk_numbers, code_examples, summaries, metadatas, batch_size))
 
@@ -745,6 +733,7 @@ def search_code_examples(client, query, match_count=10, filter_metadata=None, so
     """Synchronous wrapper for search_code_examples."""
     return asyncio.run(_search_code_examples_async(client, query, match_count, filter_metadata, source_id))
 
-def get_supabase_client():
+def get_database_client():
     """Synchronous wrapper to get database client."""
-    return asyncio.run(get_database_client())
+    from database import get_database_client as get_postgres_client
+    return asyncio.run(get_postgres_client())

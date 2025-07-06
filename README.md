@@ -4,7 +4,7 @@
   <em>Web Crawling and RAG Capabilities for AI Agents and AI Coding Assistants</em>
 </p>
 
-A powerful implementation of the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) integrated with [Crawl4AI](https://crawl4ai.com) and [Supabase](https://supabase.com/) for providing AI agents and AI coding assistants with advanced web crawling and RAG capabilities.
+A powerful implementation of the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) integrated with [Crawl4AI](https://crawl4ai.com) and PostgreSQL for providing AI agents and AI coding assistants with advanced web crawling and RAG capabilities.
 
 With this MCP server, you can <b>scrape anything</b> and then <b>use that knowledge anywhere</b> for RAG.
 
@@ -14,7 +14,7 @@ Consider this GitHub repository a testbed, hence why I haven't been super active
 
 ## Overview
 
-This MCP server provides tools that enable AI agents to crawl websites, store content in a vector database (Supabase), and perform RAG over the crawled content. It follows the best practices for building MCP servers based on the [Mem0 MCP server template](https://github.com/coleam00/mcp-mem0/) I provided on my channel previously.
+This MCP server provides tools that enable AI agents to crawl websites, store content in a vector database (PostgreSQL with pgvector), and perform RAG over the crawled content. It follows the best practices for building MCP servers based on the [Mem0 MCP server template](https://github.com/coleam00/mcp-mem0/) I provided on my channel previously.
 
 The server includes several advanced RAG strategies that can be enabled to enhance retrieval quality:
 - **Contextual Embeddings** for enriched semantic understanding
@@ -54,10 +54,8 @@ The server provides essential web crawling and search tools:
 
 ### Core Tools (Always Available)
 
-1. **`crawl_single_page`**: Quickly crawl a single web page and store its content in the vector database
-2. **`smart_crawl_url`**: Intelligently crawl a full website based on the type of URL provided (sitemap, llms-full.txt, or a regular webpage that needs to be crawled recursively)
-3. **`get_available_sources`**: Get a list of all available sources (domains) in the database
-4. **`perform_rag_query`**: Search for relevant content using semantic search with optional source filtering
+1. **`get_available_sources`**: Get a list of all available sources (domains) in the database
+2. **`perform_rag_query`**: Search for relevant content using semantic search with optional source filtering
 
 ### Conditional Tools
 
@@ -73,7 +71,7 @@ The server provides essential web crawling and search tools:
 
 - [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) if running the MCP server as a container (recommended)
 - [Python 3.12+](https://www.python.org/downloads/) if running the MCP server directly through uv
-- [Supabase](https://supabase.com/) (database for RAG)
+- [PostgreSQL](https://postgresql.org/) with [pgvector](https://github.com/pgvector/pgvector) (database for RAG)
 - [OpenAI API key](https://platform.openai.com/api-keys) (for generating embeddings)
 - [Neo4j](https://neo4j.com/) (optional, for knowledge graph functionality) - see [Knowledge Graph Setup](#knowledge-graph-setup) section
 
@@ -124,13 +122,13 @@ The server provides essential web crawling and search tools:
 
 ## Database Setup
 
-Before running the server, you need to set up the database with the pgvector extension:
+Before running the server, you need to set up PostgreSQL with the pgvector extension:
 
-1. Go to the SQL Editor in your Supabase dashboard (create a new project first if necessary)
+1. Install PostgreSQL and the pgvector extension on your system
 
-2. Create a new query and paste the contents of `crawled_pages.sql`
+2. Create a database for the project (default: `crawl4ai_rag`)
 
-3. Run the query to create the necessary tables and functions
+3. The application will automatically create the necessary tables and indexes on first run
 
 ## Knowledge Graph Setup (Optional)
 
@@ -206,9 +204,12 @@ USE_AGENTIC_RAG=false
 USE_RERANKING=false
 USE_KNOWLEDGE_GRAPH=false
 
-# Supabase Configuration
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_SERVICE_KEY=your_supabase_service_key
+# PostgreSQL Configuration
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=crawl4ai_rag
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_postgres_password
 
 # Neo4j Configuration (required for knowledge graph functionality)
 NEO4J_URI=bolt://localhost:7687
@@ -424,8 +425,11 @@ Add this server to your MCP configuration for Claude Desktop, Windsurf, or any o
         "LLM_API_KEY": "your_llm_api_key",
         "LLM_BASE_URL": "https://api.openai.com/v1",
         "LLM_MODEL": "gpt-4.1-nano",
-        "SUPABASE_URL": "your_supabase_url",
-        "SUPABASE_SERVICE_KEY": "your_supabase_service_key",
+        "POSTGRES_HOST": "localhost",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DATABASE": "crawl4ai_rag",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "your_postgres_password",
         "USE_KNOWLEDGE_GRAPH": "false",
         "NEO4J_URI": "bolt://localhost:7687",
         "NEO4J_USER": "neo4j",
@@ -451,8 +455,11 @@ Add this server to your MCP configuration for Claude Desktop, Windsurf, or any o
                "-e", "LLM_API_KEY",
                "-e", "LLM_BASE_URL",
                "-e", "LLM_MODEL",
-               "-e", "SUPABASE_URL",
-               "-e", "SUPABASE_SERVICE_KEY",
+               "-e", "POSTGRES_HOST",
+               "-e", "POSTGRES_PORT",
+               "-e", "POSTGRES_DATABASE",
+               "-e", "POSTGRES_USER",
+               "-e", "POSTGRES_PASSWORD",
                "-e", "USE_KNOWLEDGE_GRAPH",
                "-e", "NEO4J_URI",
                "-e", "NEO4J_USER",
@@ -466,8 +473,11 @@ Add this server to your MCP configuration for Claude Desktop, Windsurf, or any o
         "LLM_API_KEY": "your_llm_api_key",
         "LLM_BASE_URL": "https://api.openai.com/v1",
         "LLM_MODEL": "gpt-4.1-nano",
-        "SUPABASE_URL": "your_supabase_url",
-        "SUPABASE_SERVICE_KEY": "your_supabase_service_key",
+        "POSTGRES_HOST": "localhost",
+        "POSTGRES_PORT": "5432",
+        "POSTGRES_DATABASE": "crawl4ai_rag",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "your_postgres_password",
         "USE_KNOWLEDGE_GRAPH": "false",
         "NEO4J_URI": "bolt://localhost:7687",
         "NEO4J_USER": "neo4j",

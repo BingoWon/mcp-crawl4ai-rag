@@ -13,14 +13,14 @@ from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse, urldefrag
 from xml.etree import ElementTree
 from dotenv import load_dotenv
-from supabase import Client
+# Removed Supabase import - using PostgreSQL instead
 from pathlib import Path
 import requests
 import asyncio
 import json
 import os
 import re
-import concurrent.futures
+# Removed concurrent.futures - no longer needed
 import sys
 
 from local_reranker import create_reranker
@@ -33,32 +33,29 @@ from apple_content_extractor import AppleContentExtractor
 knowledge_graphs_path = Path(__file__).resolve().parent.parent / 'knowledge_graphs'
 sys.path.append(str(knowledge_graphs_path))
 
-async def is_url_already_crawled(client: Client, url: str) -> bool:
+async def is_url_already_crawled(db_operations, url: str) -> bool:
     """
     Check if a URL has already been crawled and stored in the database.
 
     Args:
-        client: Supabase client instance
+        db_operations: Database operations instance
         url: URL to check
 
     Returns:
         bool: True if URL exists in database, False otherwise
     """
     try:
-        result = client.table('crawled_pages').select('url').eq('url', url).limit(1).execute()
-        return len(result.data) > 0
+        return await db_operations.url_exists(url)
     except Exception as e:
         print(f"⚠️ Database check failed for {url}: {e}")
         return False
 
 from utils import (
-    add_documents_to_supabase,
     search_documents,
-    extract_code_blocks,
     generate_code_example_summary,
-    add_code_examples_to_supabase,
     get_database_client
 )
+from database import get_database_client as get_postgres_client, DatabaseOperations
 
 # Import knowledge graph modules
 from knowledge_graph_validator import KnowledgeGraphValidator
@@ -135,8 +132,9 @@ def validate_github_url(repo_url: str) -> Dict[str, Any]:
 class Crawl4AIContext:
     """Context for the Crawl4AI MCP server."""
     crawler: AsyncWebCrawler
-    supabase_client: Client
-    reranking_model: Optional[Any] = None  # Qwen3Reranker or EmbeddingReranker
+    db_client: Any  # PostgreSQL client
+    db_operations: Any  # Database operations
+    reranking_model: Optional[Any] = None 
     knowledge_validator: Optional[Any] = None  # KnowledgeGraphValidator when available
     repo_extractor: Optional[Any] = None       # DirectNeo4jExtractor when available
 
@@ -162,7 +160,8 @@ async def crawl4ai_lifespan(server: FastMCP) -> AsyncIterator[Crawl4AIContext]:
     await crawler.__aenter__()
     
     # Initialize PostgreSQL client
-    postgres_client = await get_database_client()
+    db_client = await get_postgres_client()
+    db_operations = DatabaseOperations(db_client)
     
     # Initialize smart reranker if enabled
     reranking_model = None
@@ -214,7 +213,8 @@ async def crawl4ai_lifespan(server: FastMCP) -> AsyncIterator[Crawl4AIContext]:
     try:
         yield Crawl4AIContext(
             crawler=crawler,
-            supabase_client=postgres_client,
+            db_client=db_client,
+            db_operations=db_operations,
             reranking_model=reranking_model,
             knowledge_validator=knowledge_validator,
             repo_extractor=repo_extractor
@@ -313,32 +313,7 @@ def is_apple_documentation(url: str) -> bool:
     """
     return 'developer.apple.com/documentation/' in url
 
-async def crawl_apple_documentation(url: str) -> List[Dict[str, Any]]:
-    """
-    Crawl Apple documentation using the specialized Apple extractor.
 
-    Args:
-        url: Apple documentation URL
-
-    Returns:
-        List of dictionaries with URL and markdown content
-    """
-    if not APPLE_EXTRACTOR_AVAILABLE:
-        print(f"⚠️  Apple extractor not available, falling back to standard crawling for {url}")
-        return []
-
-    try:
-        async with AppleContentExtractor() as extractor:
-            result = await extractor.extract_clean_content(url)
-
-            if result["success"]:
-                return [{'url': url, 'markdown': result["clean_content"]}]
-            else:
-                print(f"❌ Apple extraction failed for {url}: {result.get('error', 'Unknown error')}")
-                return []
-    except Exception as e:
-        print(f"❌ Apple extractor error for {url}: {e}")
-        return []
 
 def parse_sitemap(sitemap_url: str) -> List[str]:
     """
@@ -423,347 +398,11 @@ def process_code_example(args):
     code, context_before, context_after = args
     return generate_code_example_summary(code, context_before, context_after)
 
-@mcp.tool()
-async def crawl_single_page(ctx: Context, url: str) -> str:
-    """
-    Crawl a single web page and store its content in Supabase.
-    
-    This tool is ideal for quickly retrieving content from a specific URL without following links.
-    The content is stored in Supabase for later retrieval and querying.
-    
-    Args:
-        ctx: The MCP server provided context
-        url: URL of the web page to crawl
-    
-    Returns:
-        Summary of the crawling operation and storage in Supabase
-    """
-    try:
-        # Get the crawler from the context
-        crawler = ctx.request_context.lifespan_context.crawler
-        supabase_client = ctx.request_context.lifespan_context.supabase_client
-        
-        # Use intelligent URL routing for single page crawl
-        if is_apple_documentation(url):
-            # For Apple documentation, use specialized Apple extractor
-            apple_results = await crawl_apple_documentation(url)
-            if apple_results:
-                result_data = apple_results[0]
-                # Simulate crawler result structure
-                class MockResult:
-                    def __init__(self, success, markdown):
-                        self.success = success
-                        self.markdown = markdown
-                result = MockResult(True, result_data['markdown'])
-            else:
-                result = MockResult(False, None)
-        else:
-            # Configure the crawl for standard pages
-            run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
+# Removed crawl_single_page function - moved to independent crawler module
 
-            # Crawl the page
-            result = await crawler.arun(url=url, config=run_config)
-        
-        if result.success and result.markdown:
-            # Extract source_id
-            parsed_url = urlparse(url)
-            source_id = parsed_url.netloc or parsed_url.path
-            
-            # Chunk the content
-            chunks = smart_chunk_markdown(result.markdown)
-            
-            # Prepare data for Supabase
-            urls = []
-            chunk_numbers = []
-            contents = []
-            metadatas = []
-            total_word_count = 0
-            
-            for i, chunk in enumerate(chunks):
-                urls.append(url)
-                chunk_numbers.append(i)
-                contents.append(chunk)
-                
-                # Simple metadata
-                meta = {
-                    "chunk_index": i,
-                    "url": url,
-                    "source": source_id
-                }
-                metadatas.append(meta)
-            
-            # Create url_to_full_document mapping
-            url_to_full_document = {url: result.markdown}
-            
 
-            
-            # Add documentation chunks to Supabase (AFTER source exists)
-            add_documents_to_supabase(supabase_client, urls, chunk_numbers, contents, metadatas, url_to_full_document)
-            
-            # Extract and process code examples only if enabled
-            extract_code_examples = os.getenv("USE_AGENTIC_RAG", "false") == "true"
-            if extract_code_examples:
-                code_blocks = extract_code_blocks(result.markdown)
-                if code_blocks:
-                    code_urls = []
-                    code_chunk_numbers = []
-                    code_examples = []
-                    code_summaries = []
-                    code_metadatas = []
-                    
-                    # Process code examples in parallel
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                        # Prepare arguments for parallel processing
-                        summary_args = [(block['code'], block['context_before'], block['context_after']) 
-                                        for block in code_blocks]
-                        
-                        # Generate summaries in parallel
-                        summaries = list(executor.map(process_code_example, summary_args))
-                    
-                    # Prepare code example data
-                    for i, (block, summary) in enumerate(zip(code_blocks, summaries)):
-                        code_urls.append(url)
-                        code_chunk_numbers.append(i)
-                        code_examples.append(block['code'])
-                        code_summaries.append(summary)
-                        
-                        # Create metadata for code example
-                        code_meta = {
-                            "chunk_index": i,
-                            "url": url,
-                            "source": source_id,
-                            "char_count": len(block['code']),
-                            "word_count": len(block['code'].split())
-                        }
-                        code_metadatas.append(code_meta)
-                    
-                    # Add code examples to Supabase
-                    add_code_examples_to_supabase(
-                        supabase_client, 
-                        code_urls, 
-                        code_chunk_numbers, 
-                        code_examples, 
-                        code_summaries, 
-                        code_metadatas
-                    )
-            
-            return json.dumps({
-                "success": True,
-                "url": url,
-                "chunks_stored": len(chunks),
-                "code_examples_stored": len(code_blocks) if code_blocks else 0,
-                "content_length": len(result.markdown),
-                "total_word_count": total_word_count,
-                "source_id": source_id,
-                "links_count": {
-                    "internal": len(result.links.get("internal", [])),
-                    "external": len(result.links.get("external", []))
-                }
-            }, indent=2)
-        else:
-            return json.dumps({
-                "success": False,
-                "url": url,
-                "error": result.error_message
-            }, indent=2)
-    except Exception as e:
-        return json.dumps({
-            "success": False,
-            "url": url,
-            "error": str(e)
-        }, indent=2)
+# Removed smart_crawl_url function - moved to independent crawler module
 
-@mcp.tool()
-async def smart_crawl_url(ctx: Context, url: str, max_depth: int = 3, max_concurrent: int = 10, chunk_size: int = 5000) -> str:
-    """
-    Intelligently crawl a URL based on its type and store content in Supabase.
-    
-    This tool automatically detects the URL type and applies the appropriate crawling method:
-    - For sitemaps: Extracts and crawls all URLs in parallel
-    - For text files (llms.txt): Directly retrieves the content
-    - For regular webpages: Recursively crawls internal links up to the specified depth
-    
-    All crawled content is chunked and stored in Supabase for later retrieval and querying.
-    
-    Args:
-        ctx: The MCP server provided context
-        url: URL to crawl (can be a regular webpage, sitemap.xml, or .txt file)
-        max_depth: Maximum recursion depth for regular URLs (default: 3)
-        max_concurrent: Maximum number of concurrent browser sessions (default: 10)
-        chunk_size: Maximum size of each content chunk in characters (default: 1000)
-    
-    Returns:
-        JSON string with crawl summary and storage information
-    """
-    try:
-        # Get the crawler from the context
-        crawler = ctx.request_context.lifespan_context.crawler
-        supabase_client = ctx.request_context.lifespan_context.supabase_client
-        
-        # Determine the crawl strategy with intelligent URL routing
-        crawl_results = []
-        crawl_type = None
-
-        if is_apple_documentation(url):
-            # For Apple documentation, use specialized Apple extractor
-            crawl_results = await crawl_apple_documentation(url)
-            crawl_type = "apple_documentation"
-        elif is_txt(url):
-            # For text files, use simple crawl
-            crawl_results = await crawl_markdown_file(crawler, url)
-            crawl_type = "text_file"
-        elif is_sitemap(url):
-            # For sitemaps, extract URLs and crawl in parallel
-            sitemap_urls = parse_sitemap(url)
-            if not sitemap_urls:
-                return json.dumps({
-                    "success": False,
-                    "url": url,
-                    "error": "No URLs found in sitemap"
-                }, indent=2)
-            crawl_results = await crawl_batch(crawler, sitemap_urls, max_concurrent=max_concurrent)
-            crawl_type = "sitemap"
-        else:
-            # For regular URLs, use recursive crawl with database checking
-            crawl_results = await crawl_recursive_internal_links(
-                crawler, [url],
-                max_depth=max_depth,
-                max_concurrent=max_concurrent,
-                supabase_client=supabase_client
-            )
-            crawl_type = "webpage"
-        
-        if not crawl_results:
-            return json.dumps({
-                "success": False,
-                "url": url,
-                "error": "No content found"
-            }, indent=2)
-        
-        # Process results and store in Supabase
-        urls = []
-        chunk_numbers = []
-        contents = []
-        metadatas = []
-        chunk_count = 0
-        
-        # Track sources and their content
-        source_content_map = {}
-        
-        # Process documentation chunks
-        for doc in crawl_results:
-            source_url = doc['url']
-            md = doc['markdown']
-            chunks = smart_chunk_markdown(md, chunk_size=chunk_size)
-            
-            # Extract source_id
-            parsed_url = urlparse(source_url)
-            source_id = parsed_url.netloc or parsed_url.path
-            
-            # Store content for source summary generation
-            if source_id not in source_content_map:
-                source_content_map[source_id] = md[:5000]  # Store first 5000 chars
-            
-            for i, chunk in enumerate(chunks):
-                urls.append(source_url)
-                chunk_numbers.append(i)
-                contents.append(chunk)
-                
-                # Simple metadata
-                meta = {
-                    "chunk_index": i,
-                    "url": source_url,
-                    "source": source_id,
-                    "crawl_type": crawl_type
-                }
-                metadatas.append(meta)
-                
-                chunk_count += 1
-        
-        # Create url_to_full_document mapping
-        url_to_full_document = {}
-        for doc in crawl_results:
-            url_to_full_document[doc['url']] = doc['markdown']
-        
-
-        
-        # Add documentation chunks to Supabase (AFTER sources exist)
-        batch_size = 20
-        add_documents_to_supabase(supabase_client, urls, chunk_numbers, contents, metadatas, url_to_full_document, batch_size=batch_size)
-        
-        # Extract and process code examples from all documents only if enabled
-        extract_code_examples_enabled = os.getenv("USE_AGENTIC_RAG", "false") == "true"
-        if extract_code_examples_enabled:
-            code_urls = []
-            code_chunk_numbers = []
-            code_examples = []
-            code_summaries = []
-            code_metadatas = []
-            
-            # Extract code blocks from all documents
-            for doc in crawl_results:
-                source_url = doc['url']
-                md = doc['markdown']
-                code_blocks = extract_code_blocks(md)
-                
-                if code_blocks:
-                    # Process code examples in parallel
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                        # Prepare arguments for parallel processing
-                        summary_args = [(block['code'], block['context_before'], block['context_after']) 
-                                        for block in code_blocks]
-                        
-                        # Generate summaries in parallel
-                        summaries = list(executor.map(process_code_example, summary_args))
-                    
-                    # Prepare code example data
-                    parsed_url = urlparse(source_url)
-                    source_id = parsed_url.netloc or parsed_url.path
-                    
-                    for i, (block, summary) in enumerate(zip(code_blocks, summaries)):
-                        code_urls.append(source_url)
-                        code_chunk_numbers.append(len(code_examples))  # Use global code example index
-                        code_examples.append(block['code'])
-                        code_summaries.append(summary)
-                        
-                        # Create metadata for code example
-                        code_meta = {
-                            "chunk_index": len(code_examples) - 1,
-                            "url": source_url,
-                            "source": source_id,
-                            "char_count": len(block['code']),
-                            "word_count": len(block['code'].split())
-                        }
-                        code_metadatas.append(code_meta)
-            
-            # Add all code examples to Supabase
-            if code_examples:
-                add_code_examples_to_supabase(
-                    supabase_client, 
-                    code_urls, 
-                    code_chunk_numbers, 
-                    code_examples, 
-                    code_summaries, 
-                    code_metadatas,
-                    batch_size=batch_size
-                )
-        
-        return json.dumps({
-            "success": True,
-            "url": url,
-            "crawl_type": crawl_type,
-            "pages_crawled": len(crawl_results),
-            "chunks_stored": chunk_count,
-            "code_examples_stored": len(code_examples),
-            "sources_updated": len(source_content_map),
-            "urls_crawled": [doc['url'] for doc in crawl_results][:5] + (["..."] if len(crawl_results) > 5 else [])
-        }, indent=2)
-    except Exception as e:
-        return json.dumps({
-            "success": False,
-            "url": url,
-            "error": str(e)
-        }, indent=2)
 
 @mcp.tool()
 async def get_available_sources(ctx: Context) -> str:
@@ -784,23 +423,20 @@ async def get_available_sources(ctx: Context) -> str:
         JSON string with the list of available sources and their details
     """
     try:
-        # Get the Supabase client from the context
-        supabase_client = ctx.request_context.lifespan_context.supabase_client
+        # Get the database operations from the context
+        db_operations = ctx.request_context.lifespan_context.db_operations
         
         # Query the sources table directly
-        result = supabase_client.from_('sources')\
-            .select('*')\
-            .order('source_id')\
-            .execute()
-        
+        sources_data = await db_operations.get_sources()
+
         # Format the sources with their details
         sources = []
-        if result.data:
-            for source in result.data:
+        if sources_data:
+            for source in sources_data:
                 sources.append({
                     "source_id": source.get("source_id"),
                     "summary": source.get("summary"),
-                    "total_words": source.get("total_words"),
+                    "total_words": source.get("total_word_count"),
                     "created_at": source.get("created_at"),
                     "updated_at": source.get("updated_at")
                 })
@@ -835,8 +471,8 @@ async def perform_rag_query(ctx: Context, query: str, source: str = None, match_
         JSON string with the search results
     """
     try:
-        # Get the Supabase client from the context
-        supabase_client = ctx.request_context.lifespan_context.supabase_client
+        # Get the database operations from the context
+        db_operations = ctx.request_context.lifespan_context.db_operations
         
         # Check if hybrid search is enabled
         use_hybrid_search = os.getenv("USE_HYBRID_SEARCH", "false") == "true"
@@ -984,8 +620,8 @@ async def search_code_examples(ctx: Context, query: str, source_id: str = None, 
         }, indent=2)
     
     try:
-        # Get the Supabase client from the context
-        supabase_client = ctx.request_context.lifespan_context.supabase_client
+        # Get the database operations from the context
+        db_operations = ctx.request_context.lifespan_context.db_operations
         
         # Check if hybrid search is enabled
         use_hybrid_search = os.getenv("USE_HYBRID_SEARCH", "false") == "true"
