@@ -102,76 +102,11 @@ class DatabaseOperations:
     # CODE EXAMPLES OPERATIONS
     # ============================================================================
     
-    async def insert_code_examples(self, data: List[Dict[str, Any]]) -> None:
-        """Insert code examples data"""
-        if not data:
-            return
-            
-        await self.client.execute_many("""
-            INSERT INTO code_examples (url, chunk_number, content, summary, metadata, source_id, embedding)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (url, chunk_number) DO UPDATE SET
-                content = EXCLUDED.content,
-                summary = EXCLUDED.summary,
-                metadata = EXCLUDED.metadata,
-                source_id = EXCLUDED.source_id,
-                embedding = EXCLUDED.embedding
-        """, [
-            (
-                item['url'],
-                item['chunk_number'],
-                item['content'],
-                item.get('summary'),
-                json.dumps(item['metadata']) if item.get('metadata') else None,
-                item['source_id'],
-                item.get('embedding')
-            )
-            for item in data
-        ])
+
     
-    async def search_code_examples_vector(self, query_embedding: List[float],
-                                        match_count: int = 10,
-                                        source_filter: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Vector similarity search in code_examples"""
-        if source_filter:
-            return await self.client.execute_query("""
-                SELECT id, url, chunk_number, content, summary, metadata, source_id,
-                       1 - (embedding <=> $1::vector) as similarity
-                FROM code_examples
-                WHERE source_id = $2 AND embedding IS NOT NULL
-                ORDER BY embedding <=> $1::vector
-                LIMIT $3
-            """, query_embedding, source_filter, match_count)
-        else:
-            return await self.client.execute_query("""
-                SELECT id, url, chunk_number, content, summary, metadata, source_id,
-                       1 - (embedding <=> $1::vector) as similarity
-                FROM code_examples
-                WHERE embedding IS NOT NULL
-                ORDER BY embedding <=> $1::vector
-                LIMIT $2
-            """, query_embedding, match_count)
+
     
-    async def search_code_examples_keyword(self, query: str,
-                                         match_count: int = 10,
-                                         source_filter: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Keyword search in code_examples"""
-        if source_filter:
-            return await self.client.execute_query("""
-                SELECT id, url, chunk_number, content, summary, metadata, source_id
-                FROM code_examples
-                WHERE (content ILIKE $1 OR summary ILIKE $1) AND source_id = $2
-                ORDER BY id
-                LIMIT $3
-            """, f'%{query}%', source_filter, match_count)
-        else:
-            return await self.client.execute_query("""
-                SELECT id, url, chunk_number, content, summary, metadata, source_id
-                FROM code_examples
-                WHERE content ILIKE $1 OR summary ILIKE $1
-                ORDER BY id
-                LIMIT $2
-            """, f'%{query}%', match_count)
+
     
     # ============================================================================
     # SOURCES OPERATIONS

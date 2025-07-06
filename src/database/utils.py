@@ -71,24 +71,7 @@ async def add_documents_to_database(client, urls, chunk_numbers, contents, metad
     await ops.insert_crawled_pages(data)
 
 
-async def add_code_examples_to_database(client, urls, chunk_numbers, code_examples, summaries, metadatas, batch_size=20):
-    """Backward compatibility function for adding code examples"""
-    # Convert to new format
-    data = []
-    for i in range(len(urls)):
-        data.append({
-            'url': urls[i],
-            'chunk_number': chunk_numbers[i],
-            'content': code_examples[i],
-            'summary': summaries[i],
-            'metadata': metadatas[i],
-            'source_id': metadatas[i].get('source', ''),
-            'embedding': None  # Will be set by caller
-        })
-    
-    # Use new operations
-    ops = await get_database_operations()
-    await ops.insert_code_examples(data)
+
 
 
 async def _search_documents_async(client, query, match_count=10, filter_metadata=None):
@@ -100,13 +83,7 @@ async def _search_documents_async(client, query, match_count=10, filter_metadata
     return await ops.search_documents_keyword(query, match_count, source_filter)
 
 
-async def _search_code_examples_async(client, query, match_count=10, filter_metadata=None, source_id=None):
-    """Backward compatibility function for code examples search"""
-    ops = await get_database_operations()
-    
-    # Use source_id parameter or extract from filter_metadata
-    source_filter = source_id or (filter_metadata.get('source') if filter_metadata else None)
-    return await ops.search_code_examples_keyword(query, match_count, source_filter)
+
 
 
 # ============================================================================
@@ -130,14 +107,12 @@ async def get_database_stats() -> dict:
         client = await get_database_client()
         
         crawled_pages_count = await client.fetch_val("SELECT COUNT(*) FROM crawled_pages")
-        code_examples_count = await client.fetch_val("SELECT COUNT(*) FROM code_examples")
         sources_count = await client.fetch_val("SELECT COUNT(*) FROM sources")
-        
+
         return {
             'crawled_pages': crawled_pages_count,
-            'code_examples': code_examples_count,
             'sources': sources_count,
-            'total_records': crawled_pages_count + code_examples_count
+            'total_records': crawled_pages_count
         }
     except Exception as e:
         print(f"❌ Failed to get database stats: {e}")

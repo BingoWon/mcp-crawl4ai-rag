@@ -83,26 +83,12 @@ class PostgreSQLClient:
                 )
             """)
             
-            # Create code_examples table
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS code_examples (
-                    id SERIAL PRIMARY KEY,
-                    url TEXT NOT NULL,
-                    chunk_number INTEGER NOT NULL,
-                    content TEXT NOT NULL,
-                    summary TEXT,
-                    metadata JSONB,
-                    source_id TEXT NOT NULL,
-                    embedding halfvec(2560),
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    UNIQUE(url, chunk_number)
-                )
-            """)
+
             
             # Create indexes for better performance
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_crawled_pages_source_id ON crawled_pages(source_id)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_crawled_pages_url ON crawled_pages(url)")
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_code_examples_source_id ON code_examples(source_id)")
+
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_sources_source_id ON sources(source_id)")
             
             # Vector indexes not needed for exact search with vector(2560)
