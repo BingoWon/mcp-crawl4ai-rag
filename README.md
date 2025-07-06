@@ -19,7 +19,6 @@ This MCP server provides tools that enable AI agents to crawl websites, store co
 The server includes several advanced RAG strategies that can be enabled to enhance retrieval quality:
 - **Contextual Embeddings** for enriched semantic understanding
 - **Hybrid Search** combining vector and keyword search
-- **Agentic RAG** for specialized code example extraction
 - **Reranking** for improved result relevance using cross-encoder models
 - **Knowledge Graph** for AI hallucination detection and repository code analysis
 
@@ -57,9 +56,7 @@ The server provides essential web crawling and search tools:
 1. **`get_available_sources`**: Get a list of all available sources (domains) in the database
 2. **`perform_rag_query`**: Search for relevant content using semantic search with optional source filtering
 
-### Conditional Tools
 
-5. **`search_code_examples`** (requires `USE_AGENTIC_RAG=true`): Search specifically for code examples and their summaries from crawled documentation. This tool provides targeted code snippet retrieval for AI coding assistants.
 
 ### Knowledge Graph Tools (requires `USE_KNOWLEDGE_GRAPH=true`, see below)
 
@@ -200,7 +197,6 @@ RERANKER_DEVICE=auto
 # RAG Strategies (set to "true" or "false", default to "false")
 USE_CONTEXTUAL_EMBEDDINGS=false
 USE_HYBRID_SEARCH=false
-USE_AGENTIC_RAG=false
 USE_RERANKING=false
 USE_KNOWLEDGE_GRAPH=false
 
@@ -282,23 +278,17 @@ Combines traditional keyword search with semantic vector search to provide more 
 - **Trade-offs**: Slightly slower search queries but more robust results, especially for technical content.
 - **Cost**: No additional API costs, just computational overhead.
 
-#### 3. **USE_AGENTIC_RAG**
-Enables specialized code example extraction and storage. When crawling documentation, the system identifies code blocks (≥300 characters), extracts them with surrounding context, generates summaries, and stores them in a separate vector database table specifically designed for code search.
 
-- **When to use**: Essential for AI coding assistants that need to find specific code examples, implementation patterns, or usage examples from documentation.
-- **Trade-offs**: Significantly slower crawling due to code extraction and summarization, requires more storage space.
-- **Cost**: Additional LLM API calls for summarizing each code example.
-- **Benefits**: Provides a dedicated `search_code_examples` tool that AI agents can use to find specific code implementations.
 
-#### 4. **USE_RERANKING**
+#### 3. **USE_RERANKING**
 Applies cross-encoder reranking to search results after initial retrieval. Uses a lightweight cross-encoder model (`cross-encoder/ms-marco-MiniLM-L-6-v2`) to score each result against the original query, then reorders results by relevance.
 
 - **When to use**: Enable this when search precision is critical and you need the most relevant results at the top. Particularly useful for complex queries where semantic similarity alone might not capture query intent.
 - **Trade-offs**: Adds ~100-200ms to search queries depending on result count, but significantly improves result ordering.
 - **Cost**: No additional API costs - uses a local model that runs on CPU.
-- **Benefits**: Better result relevance, especially for complex queries. Works with both regular RAG search and code example search.
+- **Benefits**: Better result relevance, especially for complex queries.
 
-#### 5. **USE_KNOWLEDGE_GRAPH**
+#### 4. **USE_KNOWLEDGE_GRAPH**
 Enables AI hallucination detection and repository analysis using Neo4j knowledge graphs. When enabled, the system can parse GitHub repositories into a graph database and validate AI-generated code against real repository structures. (NOT fully compatible with Docker yet, I'd recommend running through uv)
 
 - **When to use**: Enable this for AI coding assistants that need to validate generated code against real implementations, or when you want to detect when AI models hallucinate non-existent methods, classes, or incorrect usage patterns.
@@ -324,15 +314,13 @@ python knowledge_graphs/ai_hallucination_detector.py [full path to your script t
 ```
 USE_CONTEXTUAL_EMBEDDINGS=false
 USE_HYBRID_SEARCH=true
-USE_AGENTIC_RAG=false
 USE_RERANKING=true
 ```
 
-**For AI coding assistant with code examples:**
+**For enhanced search quality:**
 ```
 USE_CONTEXTUAL_EMBEDDINGS=true
 USE_HYBRID_SEARCH=true
-USE_AGENTIC_RAG=true
 USE_RERANKING=true
 USE_KNOWLEDGE_GRAPH=false
 ```
@@ -341,7 +329,6 @@ USE_KNOWLEDGE_GRAPH=false
 ```
 USE_CONTEXTUAL_EMBEDDINGS=true
 USE_HYBRID_SEARCH=true
-USE_AGENTIC_RAG=true
 USE_RERANKING=true
 USE_KNOWLEDGE_GRAPH=true
 ```
@@ -350,7 +337,6 @@ USE_KNOWLEDGE_GRAPH=true
 ```
 USE_CONTEXTUAL_EMBEDDINGS=false
 USE_HYBRID_SEARCH=true
-USE_AGENTIC_RAG=false
 USE_RERANKING=false
 USE_KNOWLEDGE_GRAPH=false
 ```
