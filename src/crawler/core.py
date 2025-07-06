@@ -13,16 +13,12 @@ import requests
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
 
 from .config import CrawlerConfig
-from .helpers import (
-    smart_chunk_markdown, normalize_url, extract_source_summary,
-    create_embeddings_safe
-)
 
-# Import database module
+# Import modules with unified style
 import sys
 from pathlib import Path
-src_path = Path(__file__).parent.parent
-sys.path.insert(0, str(src_path))
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from embedding import create_embeddings_batch
 from database import get_database_client, DatabaseOperations
 
 # Import Apple extractor
@@ -79,6 +75,101 @@ class IndependentCrawler:
     def is_txt(self, url: str) -> bool:
         """Check if URL is a text file"""
         return url.endswith('.txt')
+
+    def smart_chunk_markdown(self, text: str, chunk_size: int = 5000) -> List[str]:
+        """Split text into chunks, respecting code blocks and paragraphs."""
+        chunks = []
+        start = 0
+        text_length = len(text)
+
+        while start < text_length:
+            end = min(start + chunk_size, text_length)
+
+            # If we're not at the end of the text, try to find a good break point
+            if end < text_length:
+                # Priority 1: Look for paragraph breaks first (\n\n)
+                last_double_newline = text.rfind('\n\n', start, end)
+                if last_double_newline > start:
+                    end = last_double_newline + 2
+                else:
+                    # Priority 2: Look for single newlines (code-friendly)
+                    last_newline = text.rfind('\n', start, end)
+                    if last_newline > start:
+                        end = last_newline + 1
+                    else:
+                        # Priority 3: Look for sentence endings (. ! ?)
+                        last_sentence = max(
+                            text.rfind('. ', start, end),
+                            text.rfind('! ', start, end),
+                            text.rfind('? ', start, end)
+                        )
+                        if last_sentence > start:
+                            end = last_sentence + 2
+
+            chunk = text[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+
+            start = end
+
+        return chunks
+
+    def normalize_url(self, url: str) -> str:
+        """Normalize URL by removing fragments and trailing slashes."""
+        from urllib.parse import urldefrag
+        normalized, _ = urldefrag(url)
+        return normalized.rstrip('/')
+
+    def extract_source_summary(self, source_id: str, content: str, max_length: int = 500) -> str:
+        """Extract a summary for a source from its content using an LLM."""
+        import os
+        import openai
+
+        # Default summary if we can't extract anything meaningful
+        default_summary = f"Content from {source_id}"
+
+        if not content or len(content.strip()) == 0:
+            return default_summary
+
+        # Limit content length to avoid token limits
+        truncated_content = content[:25000] if len(content) > 25000 else content
+
+        # Create the prompt for generating the summary
+        prompt = f"""<source_content>
+{truncated_content}
+</source_content>
+
+The above content is from the documentation for '{source_id}'. Please provide a concise summary (3-5 sentences) that describes what this library/tool/framework is about. The summary should help understand what the library/tool/framework accomplishes and the purpose.
+"""
+
+        # LLM client for chat completions
+        llm_client = openai.OpenAI(
+            api_key=os.getenv("LLM_API_KEY"),
+            base_url=os.getenv("LLM_BASE_URL")
+        )
+
+        # LLM configuration
+        LLM_MODEL = os.getenv("LLM_MODEL")
+
+        # Call the LLM API to generate the summary
+        response = llm_client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that provides concise library/tool/framework summaries."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,
+            max_tokens=150
+        )
+
+        # Extract the generated summary
+        summary = response.choices[0].message.content.strip()
+
+        # Ensure the summary is not too long
+        if len(summary) > max_length:
+            summary = summary[:max_length] + "..."
+
+        return summary
 
     async def crawl_apple_documentation(self, url: str) -> List[Dict[str, Any]]:
         """Crawl Apple documentation using specialized extractor"""
@@ -242,7 +333,7 @@ class IndependentCrawler:
         source_id = parsed_url.netloc or parsed_url.path
 
         # Chunk the content
-        chunks = smart_chunk_markdown(markdown, self.config.chunk_size)
+        chunks = self.smart_chunk_markdown(markdown, self.config.chunk_size)
 
         if not chunks:
             return {
@@ -258,7 +349,7 @@ class IndependentCrawler:
         metadatas = [{"chunk_index": i, "url": url, "source": source_id} for i in range(len(chunks))]
 
         # Generate embeddings
-        embeddings = create_embeddings_safe(contents)
+        embeddings = create_embeddings_batch(contents)
 
         # Store in database
         data_to_insert = []
@@ -314,7 +405,7 @@ class IndependentCrawler:
             source_content_map[source_id] += markdown[:5000]  # First 5000 chars for summary
 
             # Chunk the content
-            chunks = smart_chunk_markdown(markdown, chunk_size)
+            chunks = self.smart_chunk_markdown(markdown, chunk_size)
 
             for i, chunk in enumerate(chunks):
                 urls.append(url)
@@ -335,7 +426,7 @@ class IndependentCrawler:
             }
 
         # Generate embeddings
-        embeddings = create_embeddings_safe(contents)
+        embeddings = create_embeddings_batch(contents)
 
         # Store in database
         data_to_insert = []
@@ -368,7 +459,7 @@ class IndependentCrawler:
         """Update or create source summary"""
         try:
             # Generate summary
-            summary = extract_source_summary(source_id, content)
+            summary = self.extract_source_summary(source_id, content)
             word_count = len(content.split())
 
             # Update or create source
@@ -428,7 +519,7 @@ class IndependentCrawler:
             # Filter out already visited URLs and check database
             urls_to_crawl = []
             for url in current_urls:
-                normalized_url = normalize_url(url)
+                normalized_url = self.normalize_url(url)
 
                 # Check memory cache first
                 if normalized_url in visited:
@@ -449,7 +540,7 @@ class IndependentCrawler:
             next_level_urls = set()
 
             for result in batch_results:
-                norm_url = normalize_url(result.url)
+                norm_url = self.normalize_url(result.url)
                 visited.add(norm_url)
 
                 if result.success and result.markdown:
@@ -458,7 +549,7 @@ class IndependentCrawler:
                     # Collect internal links for next level
                     if hasattr(result, 'links') and result.links:
                         for link in result.links.get("internal", []):
-                            next_url = normalize_url(link["href"])
+                            next_url = self.normalize_url(link["href"])
 
                             # Skip if already visited
                             if next_url in visited:
