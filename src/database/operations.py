@@ -2,8 +2,8 @@
 Database Operations
 数据库操作
 
-High-level database operations for crawled content and code examples.
-爬取内容和代码示例的高级数据库操作。
+High-level database operations for crawled content and RAG functionality.
+爬取内容和RAG功能的高级数据库操作。
 """
 
 import json
