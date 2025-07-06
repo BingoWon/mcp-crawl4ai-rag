@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
-from urllib.parse import urlparse
+
 from xml.etree import ElementTree
 from dotenv import load_dotenv
 # Removed Supabase import - using PostgreSQL instead
@@ -23,36 +23,10 @@ import os
 from local_reranker import create_reranker
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
-from utils import search_documents
+# Import embedding functions
+from embedding import create_embeddings_batch
+
 from database import get_database_client as get_postgres_client, DatabaseOperations
-
-
-
-async def is_url_already_crawled(db_operations, url: str) -> bool:
-    """
-    Check if a URL has already been crawled and stored in the database.
-
-    Args:
-        db_operations: Database operations instance
-        url: URL to check
-
-    Returns:
-        bool: True if URL exists in database, False otherwise
-    """
-    try:
-        return await db_operations.url_exists(url)
-    except Exception as e:
-        print(f"⚠️ Database check failed for {url}: {e}")
-        return False
-
-# Import reranking functionality
-try:
-    from reranking import create_reranker, rerank_results
-    RERANKER_AVAILABLE = True
-except ImportError:
-    RERANKER_AVAILABLE = False
-    print("⚠️ Reranking functionality not available - install reranking dependencies if needed")
-
 
 
 # Load environment variables from the project root .env file
@@ -102,15 +76,9 @@ async def crawl4ai_lifespan(_server: FastMCP) -> AsyncIterator[Crawl4AIContext]:
     
     # Initialize smart reranker if enabled
     reranking_model = None
-    if os.getenv("USE_RERANKING", "false") == "true" and RERANKER_AVAILABLE:
-        try:
-            reranking_model = create_reranker()
-            print("✅ Reranker initialized successfully")
-        except Exception as e:
-            print(f"❌ Failed to initialize reranker: {e}")
-            reranking_model = None
-    elif os.getenv("USE_RERANKING", "false") == "true":
-        print("⚠️  Reranking enabled but reranker modules not available")
+    if os.getenv("USE_RERANKING", "false") == "true":
+        reranking_model = create_reranker()
+        print("✅ Reranker initialized successfully")
     
 
     
@@ -167,41 +135,36 @@ def rerank_results(model: Any, query: str, results: List[Dict[str, Any]], conten
         print(f"❌ Reranking error: {e}")
         return results
 
-def is_sitemap(url: str) -> bool:
-    """
-    Check if a URL is a sitemap.
-    
-    Args:
-        url: URL to check
-        
-    Returns:
-        True if the URL is a sitemap, False otherwise
-    """
-    return url.endswith('sitemap.xml') or 'sitemap' in urlparse(url).path
+# Search functions moved from utils.py
+def create_embedding(text: str) -> List[float]:
+    """Create an embedding for a single text using Qwen3-Embedding-4B."""
+    embeddings = create_embeddings_batch([text])
+    return embeddings[0] if embeddings else [0.0] * 2560
 
-def is_txt(url: str) -> bool:
-    """
-    Check if a URL is a text file.
+async def _search_documents_async(
+    client,
+    query: str,
+    match_count: int = 10,
+    filter_metadata: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    """Search for documents using vector similarity."""
+    import json
 
-    Args:
-        url: URL to check
+    # Create embedding for the query
+    query_embedding = create_embedding(query)
 
-    Returns:
-        True if the URL is a text file, False otherwise
-    """
-    return url.endswith('.txt')
+    # Execute the search using the match_crawled_pages function
+    result = await client.call_function('match_crawled_pages',
+                                      query_embedding,
+                                      match_count,
+                                      json.dumps(filter_metadata or {}),
+                                      None)
+    return result
 
-def is_apple_documentation(url: str) -> bool:
-    """
-    Check if a URL is Apple developer documentation.
-
-    Args:
-        url: URL to check
-
-    Returns:
-        True if the URL is Apple documentation, False otherwise
-    """
-    return 'developer.apple.com/documentation/' in url
+def search_documents(client, query, match_count=10, filter_metadata=None):
+    """Synchronous wrapper for search_documents."""
+    import asyncio
+    return asyncio.run(_search_documents_async(client, query, match_count, filter_metadata))
 
 
 
@@ -226,55 +189,6 @@ def parse_sitemap(sitemap_url: str) -> List[str]:
             print(f"Error parsing sitemap XML: {e}")
 
     return urls
-
-def smart_chunk_markdown(text: str, chunk_size: int = 5000) -> List[str]:
-    """Split text into chunks, respecting paragraphs and sentences."""
-    chunks = []
-    start = 0
-    text_length = len(text)
-
-    while start < text_length:
-        # Calculate end position
-        end = start + chunk_size
-
-        # If we're at the end of the text, just take what's left
-        if end >= text_length:
-            chunks.append(text[start:].strip())
-            break
-
-        # Try to break at a paragraph
-        chunk = text[start:end]
-        if '\n\n' in chunk:
-            # Find the last paragraph break
-            last_break = chunk.rfind('\n\n')
-            if last_break > chunk_size * 0.3:  # Only break if we're past 30% of chunk_size
-                end = start + last_break
-
-        # If no paragraph break, try to break at a sentence
-        elif '. ' in chunk:
-            # Find the last sentence break
-            last_period = chunk.rfind('. ')
-            if last_period > chunk_size * 0.3:  # Only break if we're past 30% of chunk_size
-                end = start + last_period + 1
-
-        # Extract chunk and clean it up
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-
-        # Move start position for next chunk
-        start = end
-
-    return chunks
-
-
-
-
-
-# Removed crawl_single_page function - moved to independent crawler module
-
-
-# Removed smart_crawl_url function - moved to independent crawler module
 
 
 @mcp.tool()

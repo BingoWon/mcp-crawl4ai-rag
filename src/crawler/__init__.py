@@ -10,19 +10,12 @@ from .core import IndependentCrawler
 from .config import CrawlerConfig
 
 # Apple-specific components
-try:
-    from .apple_content_extractor import AppleContentExtractor
-    from .apple_stealth_crawler import AppleStealthCrawler
-    APPLE_COMPONENTS_AVAILABLE = True
-except ImportError:
-    APPLE_COMPONENTS_AVAILABLE = False
-    AppleContentExtractor = None
-    AppleStealthCrawler = None
+from .apple_content_extractor import AppleContentExtractor
+from .apple_stealth_crawler import AppleStealthCrawler
 
 __all__ = [
     "IndependentCrawler",
     "CrawlerConfig",
     "AppleContentExtractor",
-    "AppleStealthCrawler",
-    "APPLE_COMPONENTS_AVAILABLE"
+    "AppleStealthCrawler"
 ]
