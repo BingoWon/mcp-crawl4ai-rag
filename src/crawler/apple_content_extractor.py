@@ -1,6 +1,6 @@
 """Apple内容提取器 - 专门针对Apple开发者文档的精确内容提取"""
 
-from apple_stealth_crawler import AppleStealthCrawler
+from .apple_stealth_crawler import AppleStealthCrawler
 from typing import Dict, Any
 import re
 

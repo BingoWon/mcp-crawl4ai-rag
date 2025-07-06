@@ -15,7 +15,7 @@ TEST_URL = "https://developer.apple.com/documentation/visionos/playing-immersive
 # 添加src目录到路径
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from apple_content_extractor import AppleContentExtractor
+from crawler import AppleContentExtractor
 
 
 async def test_apple_documentation():
@@ -37,13 +37,17 @@ async def test_apple_documentation():
         raw_result = await extractor.crawler.crawl(TEST_URL)
         raw_content = raw_result["markdown"] if raw_result["success"] else ""
 
+        # 创建输出目录
+        output_dir = Path(__file__).parent / "output"
+        output_dir.mkdir(exist_ok=True)
+
         # 保存原始内容（清理前）
-        raw_output_file = f"test/output/raw_content_{timestamp}.md"
+        raw_output_file = output_dir / f"raw_content_{timestamp}.md"
         with open(raw_output_file, 'w', encoding='utf-8') as f:
             f.write(raw_content)
 
         # 保存清理后内容
-        clean_output_file = f"test/output/clean_content_{timestamp}.md"
+        clean_output_file = output_dir / f"clean_content_{timestamp}.md"
         with open(clean_output_file, 'w', encoding='utf-8') as f:
             f.write(clean_content)
 
