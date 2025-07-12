@@ -20,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from embedding import create_embeddings_batch
 from database import get_database_client, DatabaseOperations
+from chunking import SmartChunker
 
 # Import Apple extractor
 try:
@@ -32,13 +33,14 @@ except ImportError:
 
 class IndependentCrawler:
     """Independent crawler that doesn't depend on MCP context"""
-    
+
     def __init__(self, config: CrawlerConfig):
         """Initialize the independent crawler"""
         self.config = config
         self.crawler: Optional[AsyncWebCrawler] = None
         self.db_client = None
         self.db_operations = None
+        self.chunker = SmartChunker(config.chunk_size)
         
     async def __aenter__(self):
         """Async context manager entry"""
@@ -76,43 +78,7 @@ class IndependentCrawler:
         """Check if URL is a text file"""
         return url.endswith('.txt')
 
-    def smart_chunk_markdown(self, text: str, chunk_size: int = 5000) -> List[str]:
-        """Split text into chunks, respecting code blocks and paragraphs."""
-        chunks = []
-        start = 0
-        text_length = len(text)
 
-        while start < text_length:
-            end = min(start + chunk_size, text_length)
-
-            # If we're not at the end of the text, try to find a good break point
-            if end < text_length:
-                # Priority 1: Look for paragraph breaks first (\n\n)
-                last_double_newline = text.rfind('\n\n', start, end)
-                if last_double_newline > start:
-                    end = last_double_newline + 2
-                else:
-                    # Priority 2: Look for single newlines (code-friendly)
-                    last_newline = text.rfind('\n', start, end)
-                    if last_newline > start:
-                        end = last_newline + 1
-                    else:
-                        # Priority 3: Look for sentence endings (. ! ?)
-                        last_sentence = max(
-                            text.rfind('. ', start, end),
-                            text.rfind('! ', start, end),
-                            text.rfind('? ', start, end)
-                        )
-                        if last_sentence > start:
-                            end = last_sentence + 2
-
-            chunk = text[start:end].strip()
-            if chunk:
-                chunks.append(chunk)
-
-            start = end
-
-        return chunks
 
     def normalize_url(self, url: str) -> str:
         """Normalize URL by removing fragments and trailing slashes."""
@@ -333,7 +299,7 @@ The above content is from the documentation for '{source_id}'. Please provide a 
         source_id = parsed_url.netloc or parsed_url.path
 
         # Chunk the content
-        chunks = self.smart_chunk_markdown(markdown, self.config.chunk_size)
+        chunks = self.chunker.chunk_text_simple(markdown)
 
         if not chunks:
             return {
@@ -405,7 +371,8 @@ The above content is from the documentation for '{source_id}'. Please provide a 
             source_content_map[source_id] += markdown[:5000]  # First 5000 chars for summary
 
             # Chunk the content
-            chunks = self.smart_chunk_markdown(markdown, chunk_size)
+            chunker = SmartChunker(chunk_size)
+            chunks = chunker.chunk_text_simple(markdown)
 
             for i, chunk in enumerate(chunks):
                 urls.append(url)

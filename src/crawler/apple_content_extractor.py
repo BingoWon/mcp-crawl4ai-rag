@@ -72,9 +72,6 @@ class AppleContentExtractor:
             lines = lines[:see_also_index]
 
         for line in lines:
-            if not line:
-                continue
-
             # 过滤功能链接：[ 单词 ](URL)
             if re.match(r'^\s*\[\s*\w+\s*\]\s*\([^)]+\)\s*$', line):
                 continue
@@ -82,16 +79,15 @@ class AppleContentExtractor:
             # 移除图片部分，保留后面的文字：![描述](URL)文字说明
             line = re.sub(r'!\[.*?\]\([^)]+\)', '', line)
 
-            # 如果移除图片后整行为空，则跳过
-            if not line.strip():
-                continue
-
             # 清理章节标题中的URL链接
             title_url_pattern = r'^(\s*)(#{1,6})\s*\[(.*?)\]\((.*?)\)'
             match = re.match(title_url_pattern, line)
             if match:
                 leading_whitespace, level, title_text, _ = match.groups()
                 line = f'{leading_whitespace}{level} {title_text}'
+
+            # 清理行内超链接：[text](url) -> text
+            line = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', line)
 
             clean_lines.append(line)
 
