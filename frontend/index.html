@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <h1>Database Viewer</h1>
+            <div class="stats">
+                <span id="pages-count">Pages: 0</span>
+                <span id="chunks-count">Chunks: 0</span>
+                <span id="last-update">Last Update: --</span>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="main">
+            <!-- 左侧 Pages -->
+            <section class="panel left-panel">
+                <div class="panel-header">
+                    <h2>Pages</h2>
+                    <div class="panel-count" id="pages-panel-count">0</div>
+                </div>
+                <div class="panel-content">
+                    <div id="pages-error" class="error" style="display: none;"></div>
+                    <div id="pages-table" class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>URL</th>
+                                    <th>Content</th>
+                                    <th>Created</th>
+                                    <th>Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pages-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="pages-empty" class="empty" style="display: none;">
+                        No pages data
+                    </div>
+                </div>
+            </section>
+
+            <!-- 右侧 Chunks -->
+            <section class="panel right-panel">
+                <div class="panel-header">
+                    <h2>Chunks</h2>
+                    <div class="panel-count" id="chunks-panel-count">0</div>
+                </div>
+                <div class="panel-content">
+                    <div id="chunks-error" class="error" style="display: none;"></div>
+                    <div id="chunks-table" class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>URL</th>
+                                    <th>Content</th>
+                                    <th>Embedding</th>
+                                    <th>Created</th>
+                                </tr>
+                            </thead>
+                            <tbody id="chunks-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="chunks-empty" class="empty" style="display: none;">
+                        No chunks data
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
