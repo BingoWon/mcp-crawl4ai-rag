@@ -27,6 +27,9 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from embedding import create_embeddings_batch
 
 from database import get_database_client as get_postgres_client, DatabaseOperations
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 # Load environment variables from the project root .env file
@@ -132,7 +135,7 @@ def rerank_results(model: Any, query: str, results: List[Dict[str, Any]], conten
         return sorted(results, key=lambda x: x.get("rerank_score", 0), reverse=True)
 
     except Exception as e:
-        print(f"❌ Reranking error: {e}")
+        logger.error(f"Reranking error: {e}")
         return results
 
 # Search functions moved from utils.py
@@ -186,7 +189,7 @@ def parse_sitemap(sitemap_url: str) -> List[str]:
             tree = ElementTree.fromstring(resp.content)
             urls = [loc.text for loc in tree.findall('.//{*}loc')]
         except Exception as e:
-            print(f"Error parsing sitemap XML: {e}")
+            logger.error(f"Error parsing sitemap XML: {e}")
 
     return urls
 
@@ -386,7 +389,7 @@ async def crawl_markdown_file(crawler: AsyncWebCrawler, url: str) -> List[Dict[s
     if result.success and result.markdown:
         return [{'url': url, 'markdown': result.markdown}]
     else:
-        print(f"Failed to crawl {url}: {result.error_message}")
+        logger.error(f"Failed to crawl {url}: {result.error_message}")
         return []
 
 async def crawl_batch(crawler: AsyncWebCrawler, urls: List[str], max_concurrent: int = 10) -> List[Dict[str, Any]]:

@@ -21,7 +21,9 @@ from chunking import SmartChunker
 
 # Import Apple extractor (always available)
 from .apple_content_extractor import AppleContentExtractor
-from .logger import logger
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class IndependentCrawler:

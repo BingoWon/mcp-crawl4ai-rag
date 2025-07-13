@@ -7,7 +7,9 @@ Apple网站隐蔽爬虫
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from typing import Dict, Any, Optional
 import asyncio
-from .logger import logger
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class AppleStealthCrawler:

@@ -3,7 +3,9 @@
 from .apple_stealth_crawler import AppleStealthCrawler
 from typing import Dict, Any
 import re
-from .logger import logger
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 
