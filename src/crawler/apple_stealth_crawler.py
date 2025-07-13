@@ -15,7 +15,6 @@ class AppleStealthCrawler:
     def __init__(self):
         """初始化Apple隐蔽爬虫"""
         self.browser_config = self._create_stealth_browser_config()
-        self.crawler_config = self._create_stealth_crawler_config()
         self.crawler: Optional[AsyncWebCrawler] = None
 
     def _create_stealth_browser_config(self) -> BrowserConfig:
@@ -44,20 +43,28 @@ class AppleStealthCrawler:
             ]
         )
 
-    def _create_stealth_crawler_config(self) -> CrawlerRunConfig:
-        """创建隐蔽爬虫运行配置"""
+    def _create_content_config(self) -> CrawlerRunConfig:
+        """创建内容提取配置 - 高质量内容"""
         return CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS,
             word_count_threshold=10,
             delay_before_return_html=3.0,
             page_timeout=15000,
             remove_overlay_elements=True,
-            # 精确定位Apple文档主要内容区域
-            css_selector="#app-main",
-            # 过滤掉导航和页脚标签，2025 年 7 月 13 日，这部分没有启用，是因为启用了会过滤到文档中的 Deprecated aside内容
-            # excluded_tags=['nav', 'header', 'footer', 'aside'],
-            # 移除外部链接和社交媒体链接
-            exclude_external_links=False,  # 保留Apple内部的外部链接
+            css_selector="#app-main",  # 精确定位主要内容区域
+            exclude_external_links=False,
+            exclude_social_media_links=True
+        )
+
+    def _create_full_config(self) -> CrawlerRunConfig:
+        """创建完整页面配置 - 包含所有链接"""
+        return CrawlerRunConfig(
+            cache_mode=CacheMode.BYPASS,
+            word_count_threshold=10,
+            delay_before_return_html=3.0,
+            page_timeout=15000,
+            # 不使用css_selector，获取完整页面
+            exclude_external_links=False,
             exclude_social_media_links=True
         )
     
@@ -91,17 +98,35 @@ class AppleStealthCrawler:
         if self.crawler:
             await self.crawler.__aexit__(exc_type, exc_val, exc_tb)
     
-    async def crawl(self, url: str) -> Dict[str, Any]:
-        """爬取指定URL"""
+    async def extract_content(self, url: str) -> Dict[str, Any]:
+        """提取高质量内容 - 使用css_selector"""
         if not self.crawler:
             raise RuntimeError("Crawler not initialized. Use async with statement.")
-        
-        result = await self.crawler.arun(url=url, config=self.crawler_config)
-        
+
+        config = self._create_content_config()
+        result = await self.crawler.arun(url=url, config=config)
+
         return {
             "success": result.success,
             "url": url,
             "markdown": result.markdown if result.success else None,
+            "error": result.error_message if not result.success else None,
+            "content_length": len(result.markdown) if result.success and result.markdown else 0
+        }
+
+    async def extract_full_page(self, url: str) -> Dict[str, Any]:
+        """提取完整页面 - 包含所有链接"""
+        if not self.crawler:
+            raise RuntimeError("Crawler not initialized. Use async with statement.")
+
+        config = self._create_full_config()
+        result = await self.crawler.arun(url=url, config=config)
+
+        return {
+            "success": result.success,
+            "url": url,
+            "markdown": result.markdown if result.success else None,
+            "links": result.links if result.success and hasattr(result, 'links') else None,
             "error": result.error_message if not result.success else None,
             "content_length": len(result.markdown) if result.success and result.markdown else 0
         }

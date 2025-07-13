@@ -7,7 +7,6 @@ This module provides standalone crawling functionality without MCP dependencies.
 """
 
 from .core import IndependentCrawler
-from .config import CrawlerConfig
 
 # Apple-specific components
 from .apple_content_extractor import AppleContentExtractor
@@ -15,7 +14,6 @@ from .apple_stealth_crawler import AppleStealthCrawler
 
 __all__ = [
     "IndependentCrawler",
-    "CrawlerConfig",
     "AppleContentExtractor",
     "AppleStealthCrawler"
 ]

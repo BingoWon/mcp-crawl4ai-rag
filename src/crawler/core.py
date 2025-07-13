@@ -6,13 +6,10 @@ Complete standalone crawling functionality with no MCP dependencies.
 完全独立的爬虫功能，无MCP依赖。
 """
 
+import os
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlparse
-from xml.etree import ElementTree
-import requests
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
-
-from .config import CrawlerConfig
+from crawl4ai import AsyncWebCrawler
 
 # Import modules with unified style
 import sys
@@ -22,25 +19,22 @@ from embedding import create_embeddings_batch
 from database import get_database_client, DatabaseOperations
 from chunking import SmartChunker
 
-# Import Apple extractor
-try:
-    from .apple_content_extractor import AppleContentExtractor
-    APPLE_EXTRACTOR_AVAILABLE = True
-except ImportError:
-    APPLE_EXTRACTOR_AVAILABLE = False
-    print("⚠️  Apple content extractor not available")
+# Import Apple extractor (always available)
+from .apple_content_extractor import AppleContentExtractor
 
 
 class IndependentCrawler:
     """Independent crawler that doesn't depend on MCP context"""
 
-    def __init__(self, config: CrawlerConfig):
+    # Apple文档URL常量
+    APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
+
+    def __init__(self):
         """Initialize the independent crawler"""
-        self.config = config
         self.crawler: Optional[AsyncWebCrawler] = None
         self.db_client = None
         self.db_operations = None
-        self.chunker = SmartChunker(config.chunk_size)
+        self.chunker = SmartChunker(int(os.getenv('CHUNK_SIZE', '5000')))
         
     async def __aenter__(self):
         """Async context manager entry"""
@@ -66,34 +60,23 @@ class IndependentCrawler:
         if self.crawler:
             await self.crawler.close()
 
-    def is_apple_documentation(self, url: str) -> bool:
-        """Check if URL is Apple developer documentation"""
-        return 'developer.apple.com/documentation/' in url
+    def clean_and_normalize_url(self, url: str) -> str:
+        """清洗和标准化URL - 移除锚点片段和末尾斜杠"""
+        from urllib.parse import urlparse, urlunparse
 
-    def is_sitemap(self, url: str) -> bool:
-        """Check if URL is a sitemap"""
-        return url.endswith('sitemap.xml') or 'sitemap' in urlparse(url).path
+        parsed = urlparse(url)
 
-    def is_txt(self, url: str) -> bool:
-        """Check if URL is a text file"""
-        return url.endswith('.txt')
+        # 清洗：移除fragment（#后面的内容）
+        cleaned_parsed = parsed._replace(fragment='')
 
+        # 标准化：移除末尾斜杠
+        path = cleaned_parsed.path.rstrip('/')
+        normalized_parsed = cleaned_parsed._replace(path=path)
 
-
-    def normalize_url(self, url: str) -> str:
-        """Normalize URL by removing fragments and trailing slashes."""
-        from urllib.parse import urldefrag
-        normalized, _ = urldefrag(url)
-        return normalized.rstrip('/')
-
-
+        return urlunparse(normalized_parsed)
 
     async def crawl_apple_documentation(self, url: str) -> List[Dict[str, Any]]:
         """Crawl Apple documentation using specialized extractor"""
-        if not APPLE_EXTRACTOR_AVAILABLE:
-            print(f"⚠️  Apple extractor not available, falling back to standard crawling for {url}")
-            return []
-
         try:
             async with AppleContentExtractor() as extractor:
                 result = await extractor.extract_clean_content(url)
@@ -107,141 +90,38 @@ class IndependentCrawler:
             print(f"❌ Apple extractor error for {url}: {e}")
             return []
 
-    def parse_sitemap(self, sitemap_url: str) -> List[str]:
-        """Parse sitemap and extract URLs"""
-        resp = requests.get(sitemap_url)
-        urls = []
-
-        if resp.status_code == 200:
-            try:
-                tree = ElementTree.fromstring(resp.content)
-                urls = [loc.text for loc in tree.findall('.//{*}loc')]
-            except Exception as e:
-                print(f"Error parsing sitemap XML: {e}")
-
-        return urls
-
-    async def crawl_markdown_file(self, url: str) -> List[Dict[str, Any]]:
-        """Crawl a markdown/text file"""
-        if not self.crawler:
-            return []
-
+    async def _extract_apple_links(self, url: str) -> List[str]:
+        """Extract links from Apple documentation using stealth crawler"""
         try:
-            crawl_config = CrawlerRunConfig()
-            result = await self.crawler.arun(url=url, config=crawl_config)
-            if result.success and result.markdown:
-                return [{'url': url, 'markdown': result.markdown}]
-            else:
-                print(f"Failed to crawl {url}: {result.error_message}")
+            from .apple_stealth_crawler import AppleStealthCrawler
+            async with AppleStealthCrawler() as stealth_crawler:
+                result = await stealth_crawler.extract_full_page(url)
+
+                if result["success"] and result.get("links"):
+                    return self._extract_links_from_data(result["links"])
                 return []
         except Exception as e:
-            print(f"❌ Error fetching {url}: {e}")
+            print(f"❌ Apple link extraction error for {url}: {e}")
             return []
 
-    async def crawl_batch(self, urls: List[str], max_concurrent: int = 10) -> List[Dict[str, Any]]:
-        """Batch crawl multiple URLs in parallel"""
-        if not self.crawler:
-            return []
-
-        crawl_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
-
-        results = await self.crawler.arun_many(urls=urls, config=crawl_config)
-        return [{'url': r.url, 'markdown': r.markdown} for r in results if r.success and r.markdown]
-        
-    async def crawl_single_page(self, url: str) -> Dict[str, Any]:
-        """Crawl a single web page"""
+    async def smart_crawl_url(self, url: str) -> Dict[str, Any]:
+        """Apple文档专用爬取 - 只处理Apple文档"""
         if not self.crawler or not self.db_operations:
             raise RuntimeError("Crawler not initialized. Use async with statement.")
-            
+
+        if not url.startswith(self.APPLE_DOCS_URL_PREFIX):
+            return {"success": False, "url": url, "error": "Only Apple documentation URLs are supported"}
+
         try:
-            # Use intelligent URL routing
-            if self.is_apple_documentation(url):
-                # For Apple documentation, use specialized extractor
-                apple_results = await self.crawl_apple_documentation(url)
-                if apple_results:
-                    result_data = apple_results[0]
-                    # Simulate crawler result structure
-                    class MockResult:
-                        def __init__(self, success, markdown):
-                            self.success = success
-                            self.markdown = markdown
-                    result = MockResult(True, result_data['markdown'])
-                else:
-                    result = MockResult(False, None)
-            else:
-                # Configure crawl for standard pages
-                run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
-                # Crawl the page
-                result = await self.crawler.arun(url=url, config=run_config)
-                
-            if not result.success:
-                return {
-                    "success": False,
-                    "url": url,
-                    "error": "Failed to crawl the page"
-                }
-                
-            # Process and store content (implementation continues in next part)
-            return await self._process_and_store_content(url, result.markdown)
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "url": url,
-                "error": str(e)
-            }
-            
-    async def smart_crawl_url(self, url: str, max_depth: int = None, max_concurrent: int = None, chunk_size: int = None) -> Dict[str, Any]:
-        """Intelligently crawl URL based on its type"""
-        if not self.crawler or not self.db_operations:
-            raise RuntimeError("Crawler not initialized. Use async with statement.")
-            
-        # Use provided parameters or fall back to config defaults
-        max_depth = max_depth or self.config.max_depth
-        max_concurrent = max_concurrent or self.config.max_concurrent
-        chunk_size = chunk_size or self.config.chunk_size
-        
-        try:
-            # Determine crawl type and execute appropriate method
-            if self.is_apple_documentation(url):
-                crawl_results = await self.crawl_apple_documentation(url)
-                crawl_type = "apple_documentation"
-            elif self.is_txt(url):
-                crawl_results = await self._crawl_markdown_file(url)
-                crawl_type = "text_file"
-            elif self.is_sitemap(url):
-                sitemap_urls = self.parse_sitemap(url)
-                if not sitemap_urls:
-                    return {
-                        "success": False,
-                        "url": url,
-                        "error": "No URLs found in sitemap"
-                    }
-                crawl_results = await self._crawl_batch(sitemap_urls, max_concurrent)
-                crawl_type = "sitemap"
-            else:
-                # For regular URLs, use recursive crawl
-                crawl_results = await self._crawl_recursive_internal_links(
-                    [url], max_depth, max_concurrent
-                )
-                crawl_type = "webpage"
-                
+            crawl_results = await self._crawl_recursive_apple_docs([url], int(os.getenv('MAX_DEPTH', '3')))
+
             if not crawl_results:
-                return {
-                    "success": False,
-                    "url": url,
-                    "error": "No content found"
-                }
-                
-            # Process and store all results
-            return await self._process_and_store_batch(crawl_results, chunk_size, crawl_type)
-            
+                return {"success": False, "url": url, "error": "No content found"}
+
+            return await self._process_and_store_batch(crawl_results, "apple_recursive")
+
         except Exception as e:
-            return {
-                "success": False,
-                "url": url,
-                "error": str(e)
-            }
+            return {"success": False, "url": url, "error": str(e)}
 
     async def _process_and_store_content(self, url: str, markdown: str) -> Dict[str, Any]:
         """Process and store single page content"""
@@ -291,7 +171,7 @@ class IndependentCrawler:
             "total_characters": len(markdown)
         }
 
-    async def _process_and_store_batch(self, crawl_results: List[Dict[str, Any]], chunk_size: int, crawl_type: str) -> Dict[str, Any]:
+    async def _process_and_store_batch(self, crawl_results: List[Dict[str, Any]], crawl_type: str) -> Dict[str, Any]:
         """Process and store batch crawl results"""
         urls = []
         chunk_numbers = []
@@ -311,7 +191,7 @@ class IndependentCrawler:
             source_id = parsed_url.netloc or parsed_url.path
 
             # Chunk the content
-            chunker = SmartChunker(chunk_size)
+            chunker = SmartChunker(int(os.getenv('CHUNK_SIZE', '5000')))
             chunks = chunker.chunk_text_simple(markdown)
 
             for i, chunk in enumerate(chunks):
@@ -359,40 +239,8 @@ class IndependentCrawler:
 
 
 
-    async def _crawl_markdown_file(self, url: str) -> List[Dict[str, Any]]:
-        """Crawl a markdown/text file"""
-        try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                return [{'url': url, 'markdown': response.text}]
-            else:
-                print(f"❌ Failed to fetch {url}: HTTP {response.status_code}")
-                return []
-        except Exception as e:
-            print(f"❌ Error fetching {url}: {e}")
-            return []
-
-    async def _crawl_batch(self, urls: List[str], max_concurrent: int) -> List[Dict[str, Any]]:
-        """Crawl multiple URLs in parallel"""
-        if not self.crawler:
-            return []
-
-        run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
-
-        # Process URLs in batches to respect concurrency limits
-        results = []
-        for i in range(0, len(urls), max_concurrent):
-            batch_urls = urls[i:i + max_concurrent]
-            batch_results = await self.crawler.arun_many(urls=batch_urls, config=run_config)
-
-            for result in batch_results:
-                if result.success and result.markdown:
-                    results.append({'url': result.url, 'markdown': result.markdown})
-
-        return results
-
-    async def _crawl_recursive_internal_links(self, start_urls: List[str], max_depth: int, max_concurrent: int) -> List[Dict[str, Any]]:
-        """Crawl internal links recursively with database checking"""
+    async def _crawl_recursive_apple_docs(self, start_urls: List[str], max_depth: int) -> List[Dict[str, Any]]:
+        """Unified recursive crawling with Apple documentation integration"""
         if not self.crawler:
             return []
 
@@ -400,58 +248,71 @@ class IndependentCrawler:
         results = []
         current_urls = start_urls
 
-        run_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
-
-        for depth in range(max_depth):
+        for _ in range(max_depth):
             if not current_urls:
                 break
 
-            # Filter out already visited URLs and check database
+            # Filter unvisited URLs with strict cleaning
             urls_to_crawl = []
             for url in current_urls:
-                normalized_url = self.normalize_url(url)
+                cleaned_url = self.clean_and_normalize_url(url)
 
-                # Check memory cache first
-                if normalized_url in visited:
+                # 严格检查是否为Apple文档URL
+                if not cleaned_url.startswith(self.APPLE_DOCS_URL_PREFIX):
                     continue
 
-                # Check database if available
-                if self.db_operations and await self.db_operations.url_exists(normalized_url):
-                    visited.add(normalized_url)
+                if cleaned_url in visited:
                     continue
-
-                urls_to_crawl.append(normalized_url)
+                if self.db_operations and await self.db_operations.url_exists(cleaned_url):
+                    visited.add(cleaned_url)
+                    continue
+                urls_to_crawl.append(cleaned_url)
 
             if not urls_to_crawl:
                 break
 
-            # Crawl current level
-            batch_results = await self.crawler.arun_many(urls=urls_to_crawl, config=run_config)
+            # Process Apple documentation URLs (already filtered)
             next_level_urls = set()
+            for url in urls_to_crawl:
+                visited.add(url)
 
-            for result in batch_results:
-                norm_url = self.normalize_url(result.url)
-                visited.add(norm_url)
+                # Apple documentation: dual approach for quality + completeness
+                apple_results = await self.crawl_apple_documentation(url)
+                if apple_results:
+                    results.extend(apple_results)
 
-                if result.success and result.markdown:
-                    results.append({'url': result.url, 'markdown': result.markdown})
-
-                    # Collect internal links for next level
-                    if hasattr(result, 'links') and result.links:
-                        for link in result.links.get("internal", []):
-                            next_url = self.normalize_url(link["href"])
-
-                            # Skip if already visited
-                            if next_url in visited:
-                                continue
-
-                            # Skip if already in database
-                            if self.db_operations and await self.db_operations.url_exists(next_url):
-                                visited.add(next_url)
-                                continue
-
-                            next_level_urls.add(next_url)
+                # Get complete page for link discovery using Apple stealth crawler
+                links = await self._extract_apple_links(url)
+                self._add_apple_links_to_queue(links, visited, next_level_urls)
 
             current_urls = list(next_level_urls)
 
         return results
+
+
+
+    def _extract_links_from_data(self, links_data) -> List[str]:
+        """Extract all internal links from crawl results"""
+        if not links_data or not links_data.get("internal"):
+            return []
+
+        extracted_links = []
+        for link in links_data["internal"]:
+            # crawl4ai已确保link是dict且包含href
+            extracted_links.append(link["href"])
+
+        return list(set(extracted_links))  # Remove duplicates
+
+    def _add_apple_links_to_queue(self, links: List[str], visited: set, next_level_urls: set):
+        """添加Apple文档链接到下一级爬取队列 - 严格过滤和清洗"""
+        for link in links:
+            # 先清洗和标准化URL
+            cleaned_link = self.clean_and_normalize_url(link)
+
+            # 严格检查是否为Apple文档URL
+            if not cleaned_link.startswith(self.APPLE_DOCS_URL_PREFIX):
+                continue
+
+            # 避免重复爬取
+            if cleaned_link not in visited:
+                next_level_urls.add(cleaned_link)

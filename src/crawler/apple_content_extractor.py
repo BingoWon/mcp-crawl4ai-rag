@@ -26,7 +26,7 @@ class AppleContentExtractor:
         if not self.crawler:
             raise RuntimeError("Extractor not initialized. Use async with statement.")
 
-        result = await self.crawler.crawl(url)
+        result = await self.crawler.extract_content(url)
 
         if not result["success"]:
             return {
@@ -49,14 +49,14 @@ class AppleContentExtractor:
         """后处理内容，清理导航元素、图片内容和"See Also"部分"""
         # 删除顶部导航块：找到第一个标题，删除之前的所有内容
         lines = content.split('\n')
-        first_title_index = -1
-        for i, line in enumerate(lines):
-            if line.strip().startswith('#'):
-                first_title_index = i
-                break
+        # first_title_index = -1
+        # for i, line in enumerate(lines):
+        #     if line.strip().startswith('#'):
+        #         first_title_index = i
+        #         break
 
-        if first_title_index > 0:
-            lines = lines[first_title_index:]
+        # if first_title_index > 0:
+        #     lines = lines[first_title_index:]
 
         clean_lines = []
 
@@ -72,8 +72,6 @@ class AppleContentExtractor:
             lines = lines[:see_also_index]
 
         for line in lines:
-
-
             # 移除图片部分，保留后面的文字：![描述](URL)文字说明
             line = re.sub(r'!\[.*?\]\([^)]+\)', '', line)
 
