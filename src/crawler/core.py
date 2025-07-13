@@ -35,7 +35,7 @@ class IndependentCrawler:
         self.crawler: Optional[AsyncWebCrawler] = None
         self.db_client = None
         self.db_operations = None
-        self.chunker = SmartChunker(int(os.getenv('CHUNK_SIZE', '5000')))
+        self.chunker = SmartChunker()
         self.crawled_urls: set = set()  # 内存中的已爬取URL集合
         
     async def __aenter__(self):
@@ -207,7 +207,7 @@ class IndependentCrawler:
             source_id = parsed_url.netloc or parsed_url.path
 
             # Chunk the content
-            chunker = SmartChunker(int(os.getenv('CHUNK_SIZE', '5000')))
+            chunker = SmartChunker()
             chunks = chunker.chunk_text_simple(markdown)
 
             for i, chunk in enumerate(chunks):

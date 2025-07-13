@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from crawler.apple_stealth_crawler import AppleStealthCrawler
 from crawler.core import IndependentCrawler
+from crawler.apple_content_extractor import AppleContentExtractor
 
 
 async def crawl_link_contents(cleaned_urls):
@@ -30,31 +31,34 @@ async def crawl_link_contents(cleaned_urls):
     return link_contents
 
 
-async def save_comprehensive_results(timestamp, content_result, processing_stats):
+async def save_comprehensive_results(timestamp, content_result, clean_content_result, processing_stats):
     """保存综合结果到文件"""
     filename = f"apple_comprehensive_content_{timestamp}.txt"
 
     with open(filename, 'w', encoding='utf-8') as f:
-        # 主页面内容
+        # 原始内容
         f.write("=" * 80 + "\n")
-        f.write("主页面内容\n")
+        f.write("原始内容 (AppleStealthCrawler)\n")
         f.write("=" * 80 + "\n")
         if content_result:
             f.write(content_result)
         else:
-            f.write("❌ 无法获取主页面内容\n")
+            f.write("❌ 无法获取原始内容\n")
 
-        # 链接页面内容
+        # 清理后内容
         f.write("\n\n" + "=" * 80 + "\n")
-        f.write("链接页面内容\n")
-        f.write("=" * 80 + "\n\n")
-        
+        f.write("清理后内容 (AppleContentExtractor)\n")
+        f.write("=" * 80 + "\n")
+        if clean_content_result:
+            f.write(clean_content_result)
+        else:
+            f.write("❌ 无法获取清理后内容\n")
 
         # 链接列表
-        f.write("=" * 80 + "\n")
+        f.write("\n\n" + "=" * 80 + "\n")
         f.write("链接列表\n")
         f.write("=" * 80 + "\n")
-        
+
         if processing_stats and processing_stats.get('cleaned_urls'):
             for i, url in enumerate(processing_stats['cleaned_urls'], 1):
                 f.write(f"{i}. {url}\n")
@@ -93,34 +97,36 @@ async def analyze_link_processing(links):
 
 
 async def test_single_page_crawl():
-    """测试单页面爬取"""
+    """测试单页面爬取和内容提取"""
     test_url = "https://developer.apple.com/documentation/visionos/playing-immersive-media-with-realitykit"
     test_url = "https://developer.apple.com/documentation/"
+    test_url = "https://developer.apple.com/documentation/accounts/acaccountstore"
+    test_url = "https://developer.apple.com/documentation/Accounts/"
 
-    # 直接使用Apple隐蔽爬虫获取内容
+    # 使用Apple隐蔽爬虫获取原始内容
     async with AppleStealthCrawler() as stealth_crawler:
         content = await stealth_crawler.extract_content(test_url)
         links = await stealth_crawler.extract_links(test_url)
 
-        # 分析链接处理过程
-        processing_stats = await analyze_link_processing(links)
+    # 使用Apple内容提取器获取清理后内容
+    async with AppleContentExtractor() as content_extractor:
+        clean_content = await content_extractor.extract_clean_content(test_url)
 
-    return content, processing_stats
+    # 分析链接处理过程
+    processing_stats = await analyze_link_processing(links)
+
+    return content, clean_content, processing_stats
 
 
 async def main():
-    """主测试函数 - 只输出txt文件"""
+    """主测试函数 - 测试Apple内容提取器并输出txt文件"""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-    # 单页面爬取测试
-    content, processing_stats = await test_single_page_crawl()
-
-    # 爬取每个链接的内容
-    # cleaned_urls = processing_stats.get('cleaned_urls', []) if processing_stats else []
-    # link_contents = await crawl_link_contents(cleaned_urls)
+    # 单页面爬取和内容提取测试
+    content, clean_content, processing_stats = await test_single_page_crawl()
 
     # 保存综合结果到文件
-    await save_comprehensive_results(timestamp, content, processing_stats)
+    await save_comprehensive_results(timestamp, content, clean_content, processing_stats)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from crawler import IndependentCrawler, CrawlerConfig
+from crawler import IndependentCrawler
 
 
 # ============================================================================
@@ -40,13 +40,10 @@ async def main() -> None:
         print(f"Current value: {TARGET_URL}")
         return
 
-    # Create crawler configuration
-    config = CrawlerConfig.from_env()
-
     # Execute crawl using independent crawler
     try:
         print("🚀 Starting single page crawl...")
-        async with IndependentCrawler(config) as crawler:
+        async with IndependentCrawler() as crawler:
             result = await crawler.crawl_single_page(TARGET_URL)
 
         if result["success"]:
