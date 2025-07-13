@@ -97,6 +97,13 @@ class DatabaseOperations:
             url
         )
         return result
+
+    async def get_all_crawled_urls(self) -> List[str]:
+        """Get all unique URLs from crawled_pages"""
+        result = await self.client.execute_query(
+            "SELECT DISTINCT url FROM crawled_pages ORDER BY url"
+        )
+        return [row['url'] for row in result]
     
     # ============================================================================
     # CODE EXAMPLES OPERATIONS

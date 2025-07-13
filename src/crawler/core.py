@@ -21,6 +21,7 @@ from chunking import SmartChunker
 
 # Import Apple extractor (always available)
 from .apple_content_extractor import AppleContentExtractor
+from .logger import logger
 
 
 class IndependentCrawler:
@@ -35,6 +36,7 @@ class IndependentCrawler:
         self.db_client = None
         self.db_operations = None
         self.chunker = SmartChunker(int(os.getenv('CHUNK_SIZE', '5000')))
+        self.crawled_urls: set = set()  # 内存中的已爬取URL集合
         
     async def __aenter__(self):
         """Async context manager entry"""
@@ -47,6 +49,7 @@ class IndependentCrawler:
 
     async def initialize(self) -> None:
         """Initialize crawler and database connections"""
+        logger.info("Initializing crawler and database connections")
         # Initialize PostgreSQL client
         self.db_client = await get_database_client()
         self.db_operations = DatabaseOperations(self.db_client)
@@ -55,10 +58,23 @@ class IndependentCrawler:
         self.crawler = AsyncWebCrawler(verbose=False)
         await self.crawler.start()
 
+        # 预加载已爬取的URL到内存
+        await self._preload_crawled_urls()
+        logger.info("Crawler initialization completed")
+
     async def cleanup(self) -> None:
         """Clean up resources"""
+        logger.info("Cleaning up crawler resources")
         if self.crawler:
             await self.crawler.close()
+        logger.info("Cleanup completed")
+
+    async def _preload_crawled_urls(self) -> None:
+        """预加载所有已爬取的URL到内存集合"""
+        logger.info("Preloading crawled URLs from database")
+        crawled_urls = await self.db_operations.get_all_crawled_urls()
+        self.crawled_urls = set(crawled_urls)
+        logger.info(f"Preloaded {len(self.crawled_urls)} crawled URLs")
 
     def clean_and_normalize_url(self, url: str) -> str:
         """清洗和标准化URL - 移除锚点片段和末尾斜杠"""
@@ -77,12 +93,15 @@ class IndependentCrawler:
 
     async def crawl_apple_documentation(self, url: str) -> List[Dict[str, Any]]:
         """Crawl Apple documentation using specialized extractor"""
+        logger.info(f"Crawling Apple documentation: {url}")
         try:
             async with AppleContentExtractor() as extractor:
                 clean_content = await extractor.extract_clean_content(url)
-                return [{'url': url, 'markdown': clean_content}] if clean_content else []
+                result = [{'url': url, 'markdown': clean_content}] if clean_content else []
+                logger.info(f"Apple documentation crawl completed: {url}")
+                return result
         except Exception as e:
-            print(f"❌ Apple extractor error for {url}: {e}")
+            logger.error(f"Apple extractor error for {url}: {e}")
             return []
 
     async def _extract_apple_links(self, url: str) -> List[str]:
@@ -93,7 +112,7 @@ class IndependentCrawler:
                 links = await stealth_crawler.extract_links(url)
                 return self._extract_links_from_data(links) if links else []
         except Exception as e:
-            print(f"❌ Apple link extraction error for {url}: {e}")
+            logger.error(f"Apple link extraction error for {url}: {e}")
             return []
 
     async def smart_crawl_url(self, url: str) -> Dict[str, Any]:
@@ -104,15 +123,19 @@ class IndependentCrawler:
         if not url.startswith(self.APPLE_DOCS_URL_PREFIX):
             return {"success": False, "url": url, "error": "Only Apple documentation URLs are supported"}
 
+        logger.info(f"Starting crawl for URL: {url}")
         try:
             crawl_results = await self._crawl_recursive_apple_docs([url], int(os.getenv('MAX_DEPTH', '3')))
 
             if not crawl_results:
                 return {"success": False, "url": url, "error": "No content found"}
 
-            return await self._process_and_store_batch(crawl_results, "apple_recursive")
+            result = await self._process_and_store_batch(crawl_results, "apple_recursive")
+            logger.info(f"Crawl completed for URL: {url}")
+            return result
 
         except Exception as e:
+            logger.error(f"Crawl failed for URL {url}: {e}")
             return {"success": False, "url": url, "error": str(e)}
 
     async def _process_and_store_content(self, url: str, markdown: str) -> Dict[str, Any]:
@@ -165,6 +188,7 @@ class IndependentCrawler:
 
     async def _process_and_store_batch(self, crawl_results: List[Dict[str, Any]], crawl_type: str) -> Dict[str, Any]:
         """Process and store batch crawl results"""
+        logger.info(f"Processing batch of {len(crawl_results)} crawl results")
         urls = []
         chunk_numbers = []
         contents = []
@@ -221,6 +245,7 @@ class IndependentCrawler:
 
         # Insert into crawled_pages table
         await self.db_operations.insert_crawled_pages(data_to_insert)
+        logger.info(f"Batch processing completed: {len(crawl_results)} pages, {chunk_count} chunks stored")
 
         return {
             "success": True,
@@ -236,49 +261,45 @@ class IndependentCrawler:
         if not self.crawler:
             return []
 
-        visited = set()
+        logger.info(f"Starting recursive crawl: {len(start_urls)} URLs, max depth: {max_depth}")
         results = []
         current_urls = start_urls
 
-        for _ in range(max_depth):
+        for depth in range(max_depth):
             if not current_urls:
                 break
 
-            # Filter unvisited URLs with strict cleaning
-            urls_to_crawl = []
-            for url in current_urls:
-                cleaned_url = self.clean_and_normalize_url(url)
+            # 显示当前层级的所有URL
+            logger.info(f"Depth {depth + 1}: URLs to process:")
+            for i, url in enumerate(current_urls, 1):
+                logger.info(f"  {i}. {url}")
 
-                # 严格检查是否为Apple文档URL
-                if not cleaned_url.startswith(self.APPLE_DOCS_URL_PREFIX):
-                    continue
-
-                if cleaned_url in visited:
-                    continue
-                if self.db_operations and await self.db_operations.url_exists(cleaned_url):
-                    visited.add(cleaned_url)
-                    continue
-                urls_to_crawl.append(cleaned_url)
-
-            if not urls_to_crawl:
+            if not current_urls:
+                logger.info(f"Depth {depth + 1}: No URLs to process, stopping")
                 break
 
-            # Process Apple documentation URLs (already filtered)
+            # Process Apple documentation URLs
             next_level_urls = set()
-            for url in urls_to_crawl:
-                visited.add(url)
+            crawled_count = 0
+            for i, url in enumerate(current_urls, 1):
+                # 添加到内存中的已爬取URL集合
+                self.crawled_urls.add(url)
 
                 # Apple documentation: dual approach for quality + completeness
                 apple_results = await self.crawl_apple_documentation(url)
                 if apple_results:
                     results.extend(apple_results)
+                    crawled_count += 1
+                logger.info(f"Depth {depth + 1}: Processed {i}/{len(current_urls)} URLs")
 
                 # Get complete page for link discovery using Apple stealth crawler
                 links = await self._extract_apple_links(url)
-                self._add_apple_links_to_queue(links, visited, next_level_urls)
+                self._add_apple_links_to_queue(links, next_level_urls)
 
             current_urls = list(next_level_urls)
+            logger.info(f"Depth {depth + 1} completed: {crawled_count} URLs successfully crawled, {len(next_level_urls)} new URLs discovered")
 
+        logger.info(f"Recursive crawl completed: {len(results)} total results")
         return results
 
 
@@ -293,10 +314,12 @@ class IndependentCrawler:
             # crawl4ai已确保link是dict且包含href
             extracted_links.append(link["href"])
 
+        logger.info(f"Extracted {len(extracted_links)} internal links")
         return list(set(extracted_links))  # Remove duplicates
 
-    def _add_apple_links_to_queue(self, links: List[str], visited: set, next_level_urls: set):
+    def _add_apple_links_to_queue(self, links: List[str], next_level_urls: set):
         """添加Apple文档链接到下一级爬取队列 - 严格过滤和清洗"""
+        initial_count = len(next_level_urls)
         for link in links:
             # 先清洗和标准化URL
             cleaned_link = self.clean_and_normalize_url(link)
@@ -306,5 +329,8 @@ class IndependentCrawler:
                 continue
 
             # 避免重复爬取
-            if cleaned_link not in visited:
+            if cleaned_link not in self.crawled_urls:
                 next_level_urls.add(cleaned_link)
+
+        added_count = len(next_level_urls) - initial_count
+        logger.info(f"Added {added_count} new Apple links to queue")
