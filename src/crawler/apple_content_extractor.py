@@ -72,9 +72,7 @@ class AppleContentExtractor:
             lines = lines[:see_also_index]
 
         for line in lines:
-            # 过滤功能链接：[ 单词 ](URL)
-            if re.match(r'^\s*\[\s*\w+\s*\]\s*\([^)]+\)\s*$', line):
-                continue
+
 
             # 移除图片部分，保留后面的文字：![描述](URL)文字说明
             line = re.sub(r'!\[.*?\]\([^)]+\)', '', line)
@@ -86,8 +84,8 @@ class AppleContentExtractor:
                 leading_whitespace, level, title_text, _ = match.groups()
                 line = f'{leading_whitespace}{level} {title_text}'
 
-            # 清理行内超链接：[text](url) -> text
-            line = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', line)
+            # 清理行内超链接：[text](url) -> text (智能处理转义括号)
+            line = re.sub(r'\[([^\]]+)\]\((?:[^)\\]|\\.)*\)', r'\1', line)
 
             clean_lines.append(line)
 
