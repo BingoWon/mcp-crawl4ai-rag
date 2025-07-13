@@ -112,26 +112,18 @@ class DatabaseOperations:
     # SOURCES OPERATIONS
     # ============================================================================
     
-    async def upsert_source(self, source_id: str, summary: str, word_count: int) -> None:
-        """Insert or update source information"""
-        await self.client.execute_command("""
-            INSERT INTO sources (source_id, summary, total_word_count)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (source_id) DO UPDATE SET
-                summary = EXCLUDED.summary,
-                total_word_count = EXCLUDED.total_word_count,
-                updated_at = NOW()
-        """, source_id, summary, word_count)
+
     
     async def get_sources(self) -> List[Dict[str, Any]]:
-        """Get all sources"""
-        return await self.client.execute_query(
-            "SELECT * FROM sources ORDER BY source_id"
-        )
-    
-    async def get_source(self, source_id: str) -> Optional[Dict[str, Any]]:
-        """Get specific source"""
-        return await self.client.fetch_one(
-            "SELECT * FROM sources WHERE source_id = $1",
-            source_id
-        )
+        """Get all sources with statistics from crawled_pages"""
+        return await self.client.execute_query("""
+            SELECT
+                source_id,
+                COUNT(*) as total_chunks,
+                SUM(LENGTH(content)) as total_characters,
+                MIN(created_at) as first_crawled,
+                MAX(created_at) as last_updated
+            FROM crawled_pages
+            GROUP BY source_id
+            ORDER BY source_id
+        """)

@@ -194,19 +194,13 @@ def parse_sitemap(sitemap_url: str) -> List[str]:
 @mcp.tool()
 async def get_available_sources(ctx: Context) -> str:
     """
-    Get all available sources from the sources table.
-    
-    This tool returns a list of all unique sources (domains) that have been crawled and stored
-    in the database, along with their summaries and statistics. This is useful for discovering 
-    what content is available for querying.
+    Get all available sources with statistics.
 
-    Always use this tool before calling the RAG query tool with a specific source filter!
-    
-    Args:
-        ctx: The MCP server provided context
-    
+    Returns a list of all crawled sources with chunk counts and statistics.
+    Use this before performing RAG queries to see what sources are available.
+
     Returns:
-        JSON string with the list of available sources and their details
+        JSON string with the list of available sources and their statistics
     """
     try:
         # Get the database operations from the context
@@ -215,16 +209,16 @@ async def get_available_sources(ctx: Context) -> str:
         # Query the sources table directly
         sources_data = await db_operations.get_sources()
 
-        # Format the sources with their details
+        # Format the sources with their statistics
         sources = []
         if sources_data:
             for source in sources_data:
                 sources.append({
                     "source_id": source.get("source_id"),
-                    "summary": source.get("summary"),
-                    "total_words": source.get("total_word_count"),
-                    "created_at": source.get("created_at"),
-                    "updated_at": source.get("updated_at")
+                    "total_chunks": source.get("total_chunks"),
+                    "total_characters": source.get("total_characters"),
+                    "first_crawled": source.get("first_crawled"),
+                    "last_updated": source.get("last_updated")
                 })
         
         return json.dumps({

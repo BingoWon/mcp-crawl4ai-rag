@@ -86,56 +86,7 @@ class IndependentCrawler:
         normalized, _ = urldefrag(url)
         return normalized.rstrip('/')
 
-    def extract_source_summary(self, source_id: str, content: str, max_length: int = 500) -> str:
-        """Extract a summary for a source from its content using an LLM."""
-        import os
-        import openai
 
-        # Default summary if we can't extract anything meaningful
-        default_summary = f"Content from {source_id}"
-
-        if not content or len(content.strip()) == 0:
-            return default_summary
-
-        # Limit content length to avoid token limits
-        truncated_content = content[:25000] if len(content) > 25000 else content
-
-        # Create the prompt for generating the summary
-        prompt = f"""<source_content>
-{truncated_content}
-</source_content>
-
-The above content is from the documentation for '{source_id}'. Please provide a concise summary (3-5 sentences) that describes what this library/tool/framework is about. The summary should help understand what the library/tool/framework accomplishes and the purpose.
-"""
-
-        # LLM client for chat completions
-        llm_client = openai.OpenAI(
-            api_key=os.getenv("LLM_API_KEY"),
-            base_url=os.getenv("LLM_BASE_URL")
-        )
-
-        # LLM configuration
-        LLM_MODEL = os.getenv("LLM_MODEL")
-
-        # Call the LLM API to generate the summary
-        response = llm_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that provides concise library/tool/framework summaries."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
-            max_tokens=150
-        )
-
-        # Extract the generated summary
-        summary = response.choices[0].message.content.strip()
-
-        # Ensure the summary is not too long
-        if len(summary) > max_length:
-            summary = summary[:max_length] + "..."
-
-        return summary
 
     async def crawl_apple_documentation(self, url: str) -> List[Dict[str, Any]]:
         """Crawl Apple documentation using specialized extractor"""
@@ -332,9 +283,6 @@ The above content is from the documentation for '{source_id}'. Please provide a 
         # Insert into crawled_pages table
         await self.db_operations.insert_crawled_pages(data_to_insert)
 
-        # Update or create source summary
-        await self._update_source_summary(source_id, markdown)
-
         return {
             "success": True,
             "url": url,
@@ -351,9 +299,6 @@ The above content is from the documentation for '{source_id}'. Please provide a 
         metadatas = []
         chunk_count = 0
 
-        # Track sources and their content
-        source_content_map = {}
-
         for result in crawl_results:
             url = result['url']
             markdown = result['markdown']
@@ -364,11 +309,6 @@ The above content is from the documentation for '{source_id}'. Please provide a 
             # Generate source_id
             parsed_url = urlparse(url)
             source_id = parsed_url.netloc or parsed_url.path
-
-            # Track content for source summary
-            if source_id not in source_content_map:
-                source_content_map[source_id] = ""
-            source_content_map[source_id] += markdown[:5000]  # First 5000 chars for summary
 
             # Chunk the content
             chunker = SmartChunker(chunk_size)
@@ -410,31 +350,14 @@ The above content is from the documentation for '{source_id}'. Please provide a 
         # Insert into crawled_pages table
         await self.db_operations.insert_crawled_pages(data_to_insert)
 
-        # Update source summaries
-        for source_id, content in source_content_map.items():
-            await self._update_source_summary(source_id, content)
-
         return {
             "success": True,
             "crawl_type": crawl_type,
             "total_pages": len(crawl_results),
-            "total_chunks": chunk_count,
-            "sources_updated": len(source_content_map)
+            "total_chunks": chunk_count
         }
 
-    async def _update_source_summary(self, source_id: str, content: str) -> None:
-        """Update or create source summary"""
-        try:
-            # Generate summary
-            summary = self.extract_source_summary(source_id, content)
-            word_count = len(content.split())
 
-            # Update or create source
-            word_count = len(content.split())
-            await self.db_operations.upsert_source(source_id, summary, word_count)
-
-        except Exception as e:
-            print(f"⚠️  Failed to update source summary for {source_id}: {e}")
 
     async def _crawl_markdown_file(self, url: str) -> List[Dict[str, Any]]:
         """Crawl a markdown/text file"""
