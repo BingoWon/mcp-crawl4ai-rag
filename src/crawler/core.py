@@ -74,8 +74,8 @@ class IndependentCrawler:
     async def _preload_crawled_urls(self) -> None:
         """预加载所有已爬取的URL到内存集合"""
         logger.info("Preloading crawled URLs from database")
-        crawled_urls = await self.db_operations.get_all_crawled_urls()
-        self.crawled_urls = set(crawled_urls)
+        crawled_urls = await self.db_operations.get_all_chunk_urls()
+        self.crawled_urls = set(url_record['url'] for url_record in crawled_urls)
         logger.info(f"Preloaded {len(self.crawled_urls)} crawled URLs")
 
     def clean_and_normalize_url(self, url: str) -> str:
@@ -142,6 +142,9 @@ class IndependentCrawler:
 
     async def _process_and_store_content(self, url: str, markdown: str) -> Dict[str, Any]:
         """Process and store single page content"""
+        # Store page information first
+        await self.db_operations.upsert_page(url, markdown)
+
         chunks = self.chunker.chunk_text_simple(markdown)
 
         if not chunks:
@@ -163,7 +166,7 @@ class IndependentCrawler:
                 "embedding": str(embedding)
             })
 
-        await self.db_operations.insert_crawled_pages(data_to_insert)
+        await self.db_operations.insert_chunks(data_to_insert)
 
         return {
             "success": True,
@@ -186,6 +189,9 @@ class IndependentCrawler:
 
             if not markdown:
                 continue
+
+            # Store page information first
+            await self.db_operations.upsert_page(url, markdown)
 
             chunks = self.chunker.chunk_text_simple(markdown)
             if not chunks:
@@ -214,7 +220,7 @@ class IndependentCrawler:
                 "embedding": str(embedding)
             })
 
-        await self.db_operations.insert_crawled_pages(data_to_insert)
+        await self.db_operations.insert_chunks(data_to_insert)
 
         total_chunks = len(data_to_insert)
         total_pages = len(set(chunk_urls))

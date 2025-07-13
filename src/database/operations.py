@@ -20,13 +20,13 @@ class DatabaseOperations:
     # CRAWLED PAGES OPERATIONS
     # ============================================================================
     
-    async def insert_crawled_pages(self, data: List[Dict[str, Any]]) -> None:
-        """Insert crawled pages data"""
+    async def insert_chunks(self, data: List[Dict[str, Any]]) -> None:
+        """Insert chunks data"""
         if not data:
             return
 
         await self.client.execute_many("""
-            INSERT INTO crawled_pages (url, content, embedding)
+            INSERT INTO chunks (url, content, embedding)
             VALUES ($1, $2, $3)
         """, [
             (
@@ -51,22 +51,33 @@ class DatabaseOperations:
     
     async def search_documents_keyword(self, query: str,
                                      match_count: int = 10) -> List[Dict[str, Any]]:
-        """Keyword search in crawled_pages"""
+        """Keyword search in chunks"""
         return await self.client.execute_query("""
             SELECT id, url, content
-            FROM crawled_pages
+            FROM chunks
             WHERE content ILIKE $1
             ORDER BY created_at DESC
             LIMIT $2
         """, f'%{query}%', match_count)
 
-    async def get_all_crawled_urls(self) -> List[Dict[str, Any]]:
-        """Get all crawled URLs"""
+    async def get_all_chunk_urls(self) -> List[Dict[str, Any]]:
+        """Get all chunk URLs"""
         return await self.client.execute_query("""
             SELECT url, created_at
-            FROM crawled_pages
+            FROM chunks
             ORDER BY created_at DESC
         """)
+
+    async def upsert_page(self, url: str, content: str) -> None:
+        """Insert or update page information"""
+        await self.client.execute_query("""
+            INSERT INTO pages (url, content)
+            VALUES ($1, $2)
+            ON CONFLICT (url)
+            DO UPDATE SET
+                content = EXCLUDED.content,
+                updated_at = NOW()
+        """, url, content)
     
     async def url_exists(self, url: str) -> bool:
         """Check if URL already exists in crawled_pages"""

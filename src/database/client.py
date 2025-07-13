@@ -56,9 +56,9 @@ class PostgreSQLClient:
             # Enable pgvector extension
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             
-            # Create crawled_pages table
+            # Create chunks table
             await conn.execute("""
-                CREATE TABLE IF NOT EXISTS crawled_pages (
+                CREATE TABLE IF NOT EXISTS chunks (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     url TEXT NOT NULL,
                     content TEXT NOT NULL,
@@ -68,7 +68,7 @@ class PostgreSQLClient:
             """)
 
             # Create indexes for better performance
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_crawled_pages_url ON crawled_pages(url)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_url ON chunks(url)")
             
             # Vector indexes not needed for exact search with vector(2560)
             # pgvector performs brute-force exact nearest neighbor search without indexes
