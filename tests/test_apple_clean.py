@@ -22,11 +22,8 @@ async def crawl_link_contents(cleaned_urls):
     async with AppleStealthCrawler() as stealth_crawler:
         for url in cleaned_urls:
             try:
-                content_result = await stealth_crawler.extract_content(url)
-                if content_result.get('success') and content_result.get('markdown'):
-                    link_contents[url] = content_result['markdown']
-                else:
-                    link_contents[url] = f"❌ 无法获取内容: {content_result.get('error', '未知错误')}"
+                markdown = await stealth_crawler.extract_content(url)
+                link_contents[url] = markdown if markdown else "❌ 无法获取内容"
             except Exception as e:
                 link_contents[url] = f"❌ 爬取异常: {str(e)}"
     
@@ -42,8 +39,8 @@ async def save_comprehensive_results(timestamp, content_result, processing_stats
         f.write("=" * 80 + "\n")
         f.write("主页面内容\n")
         f.write("=" * 80 + "\n")
-        if content_result.get('success') and content_result.get('markdown'):
-            f.write(content_result['markdown'])
+        if content_result:
+            f.write(content_result)
         else:
             f.write("❌ 无法获取主页面内容\n")
 
@@ -67,16 +64,16 @@ async def save_comprehensive_results(timestamp, content_result, processing_stats
     return filename
 
 
-async def analyze_link_processing(full_result):
+async def analyze_link_processing(links):
     """分析链接处理过程"""
-    if not full_result.get('success') or not full_result.get('links'):
+    if not links:
         return None
-    
+
     # 创建爬虫实例用于URL处理
     crawler = IndependentCrawler()
-    
+
     # 获取并过滤Apple文档链接
-    internal_links = full_result['links'].get('internal', [])
+    internal_links = links.get('internal', []) if isinstance(links, dict) else []
     passed_urls = [
         link["href"] for link in internal_links
         if link["href"].startswith("https://developer.apple.com/documentation/")
@@ -98,17 +95,17 @@ async def analyze_link_processing(full_result):
 async def test_single_page_crawl():
     """测试单页面爬取"""
     test_url = "https://developer.apple.com/documentation/visionos/playing-immersive-media-with-realitykit"
-    test_url = "https://developer.apple.com/documentation/Accounts/#app-main"
+    test_url = "https://developer.apple.com/documentation/"
 
     # 直接使用Apple隐蔽爬虫获取内容
     async with AppleStealthCrawler() as stealth_crawler:
-        content_result = await stealth_crawler.extract_content(test_url)
-        full_result = await stealth_crawler.extract_full_page(test_url)
-        
-        # 分析链接处理过程
-        processing_stats = await analyze_link_processing(full_result)
+        content = await stealth_crawler.extract_content(test_url)
+        links = await stealth_crawler.extract_links(test_url)
 
-    return content_result, processing_stats
+        # 分析链接处理过程
+        processing_stats = await analyze_link_processing(links)
+
+    return content, processing_stats
 
 
 async def main():
@@ -116,14 +113,14 @@ async def main():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
     # 单页面爬取测试
-    content_result, processing_stats = await test_single_page_crawl()
+    content, processing_stats = await test_single_page_crawl()
 
     # 爬取每个链接的内容
     # cleaned_urls = processing_stats.get('cleaned_urls', []) if processing_stats else []
     # link_contents = await crawl_link_contents(cleaned_urls)
 
     # 保存综合结果到文件
-    await save_comprehensive_results(timestamp, content_result, processing_stats)
+    await save_comprehensive_results(timestamp, content, processing_stats)
 
 
 if __name__ == "__main__":
