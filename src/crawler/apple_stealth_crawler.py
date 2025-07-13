@@ -54,8 +54,8 @@ class AppleStealthCrawler:
             remove_overlay_elements=True,
             # 精确定位Apple文档主要内容区域
             css_selector="#app-main",
-            # 过滤掉导航和页脚标签
-            excluded_tags=['nav', 'header', 'footer', 'aside'],
+            # 过滤掉导航和页脚标签，2025 年 7 月 13 日，这部分没有启用，是因为启用了会过滤到文档中的 Deprecated aside内容
+            # excluded_tags=['nav', 'header', 'footer', 'aside'],
             # 移除外部链接和社交媒体链接
             exclude_external_links=False,  # 保留Apple内部的外部链接
             exclude_social_media_links=True
