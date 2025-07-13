@@ -3,6 +3,7 @@
 from .apple_stealth_crawler import AppleStealthCrawler
 from typing import Dict, Any
 import re
+from .logger import logger
 
 
 
@@ -13,8 +14,10 @@ class AppleContentExtractor:
         self.crawler = None
 
     async def __aenter__(self):
+        logger.info("Initializing Apple content extractor")
         self.crawler = AppleStealthCrawler()
         await self.crawler.__aenter__()
+        logger.info("Apple content extractor initialized")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -23,8 +26,11 @@ class AppleContentExtractor:
     
     async def extract_clean_content(self, url: str):
         """提取Apple文档的纯净内容"""
+        logger.info(f"Extracting clean content from: {url}")
         markdown = await self.crawler.extract_content(url)
-        return self._post_process_content(markdown)
+        clean_content = self._post_process_content(markdown)
+        logger.info(f"Clean content extracted from: {url}")
+        return clean_content
     
     def _post_process_content(self, content: str) -> str:
         """后处理内容，清理导航元素、图片内容和"See Also"部分"""

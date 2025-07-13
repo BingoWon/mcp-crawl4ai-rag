@@ -7,6 +7,7 @@ Apple网站隐蔽爬虫
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from typing import Dict, Any, Optional
 import asyncio
+from .logger import logger
 
 
 class AppleStealthCrawler:
@@ -79,8 +80,10 @@ class AppleStealthCrawler:
     
     async def __aenter__(self):
         """异步上下文管理器入口"""
+        logger.info("Initializing Apple stealth crawler")
         self.crawler = AsyncWebCrawler(config=self.browser_config)
         await self.crawler.__aenter__()
+        logger.info("Apple stealth crawler initialized")
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -90,13 +93,17 @@ class AppleStealthCrawler:
     
     async def extract_content(self, url: str):
         """提取高质量内容"""
+        logger.info(f"Extracting content from: {url}")
         config = self._create_config("#app-main")
         result = await self.crawler.arun(url=url, config=config)
+        logger.info(f"Content extracted from: {url}")
         return result.markdown
 
     async def extract_links(self, url: str):
         """提取页面链接"""
+        logger.info(f"Extracting links from: {url}")
         config = self._create_config()
         result = await self.crawler.arun(url=url, config=config)
+        logger.info(f"Links extracted from: {url}")
         return result.links
 
