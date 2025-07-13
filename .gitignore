@@ -6,3 +6,7 @@ repos
 .claude
 
 test/output/*
+
+tests/output/*
+*.log
+*.md

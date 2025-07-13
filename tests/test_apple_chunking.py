@@ -16,32 +16,67 @@ def test_real_apple_doc():
     """测试真实的Apple文档内容"""
     print("🧪 测试真实Apple文档分块...")
     
-    apple_doc = """# Accounts
-Help users access and manage their external accounts from within your app, without requiring them to enter login credentials.
-iOS 5.0+iPadOS 5.0+Mac Catalyst 13.0+macOS 10.8+
-Deprecated
-The Accounts framework is deprecated. For new apps, instead of using Accounts, contact the provider of the service you integrate with, to get access to their SDK or documentation about managing accounts with their service.
-## Overview
-The Accounts framework provides access to user accounts stored in the Accounts database, which is managed by the system. An account stores the login credentials of a particular service, such as LinkedIn, and you use those credentials to authenticate with the service. When you integrate the Accounts framework into your app, you don’t need to store account logins yourself. Instead, the user grants your app access to use their account login credentials, bypassing the need to type their username and password. If no account for a particular service exists in the user’s Accounts database, you can let them create and save an account from within your app.
-## Topics
-### Account Management
-`classACAccountStore`
+    apple_doc = """  *  Accounts 
+  * ACAccountStore Deprecated
+
+
+Class
+# ACAccountStore
 The object you use to request, manage, and store the user’s account information.
-`classACAccount`
-The information associated with one of the user’s accounts.
-`classACAccountCredential`
-A credential object that encapsulates the information needed to authenticate a user.
-### Account Types
-`classACAccountType`
-An object that encapsulates information about all accounts of a particular type.
-### Errors
-`structACErrorCode`
-Codes for errors that may occur.
-`letACErrorDomain: String`
-The error domain for the Accounts framework.
-### Deprecated
-API ReferenceDeprecated Symbols
-Avoid using deprecated symbols in your apps.
+iOS 6.0–15.0DeprecatediPadOS 6.0–15.0DeprecatedMac Catalyst 13.1–15.0DeprecatedmacOS 10.8–12.0Deprecated
+```
+classACAccountStore
+```
+
+Deprecated
+Use appropriate non-Apple SDK corresponding to the type of account you want to reference instead
+## Overview
+The `ACAccountStore` class provides an interface for accessing, managing, and storing accounts. To create and retrieve accounts from the Accounts database, you must create an `ACAccountStore` object. Each `ACAccount` object belongs to a single account store object.
+## Topics
+### Requesting Access
+[`funcrequestAccessToAccounts(with: ACAccountType!, options: [AnyHashable : Any]!, completion: ((Bool, (any Error)?) -> Void)!)`](https://developer.apple.com/documentation/accounts/acaccountstore/requestaccesstoaccounts\(with:options:completion:\))
+Obtains permission to access protected user properties.
+`typealiasACAccountStoreRequestAccessCompletionHandler`
+Specifies a handler to call when access is granted or denied.
+### Getting Accounts
+`varaccounts: NSArray!`
+The accounts managed by this account store.
+`funcaccount(withIdentifier: String!) -> ACAccount!`
+Returns the account with the specified identifier.
+[`funcaccounts(with: ACAccountType!) -> [Any]!`](https://developer.apple.com/documentation/accounts/acaccountstore/accounts\(with:\))
+Returns all accounts of the specified type.
+### Getting Account Types
+`funcaccountType(withAccountTypeIdentifier: String!) -> ACAccountType!`
+Returns an account type that matches the specified identifier.
+### Saving Accounts
+`funcsaveAccount(ACAccount!, withCompletionHandler: ((Bool, (any Error)?) -> Void)!)`
+Saves an account to the Accounts database.
+`typealiasACAccountStoreSaveCompletionHandler`
+Specifies a handler to call when an Accounts database operation is complete.
+### Renewing Account Credentials
+`funcrenewCredentials(for: ACAccount!, completion: ((ACAccountCredentialRenewResult, (any Error)?) -> Void)!)`
+Renews account credentials when the credentials are no longer valid.
+`typealiasACAccountStoreCredentialRenewalHandler`
+Specifies a handler to call when credentials are renewed.
+`enumACAccountCredentialRenewResult`
+Status codes of credential renewal requests.
+### Removing Accounts
+`funcremoveAccount(ACAccount!, withCompletionHandler: ((Bool, (any Error)?) -> Void)!)`
+Removes an account from the account store.
+`typealiasACAccountStoreRemoveCompletionHandler`
+Specifies a handler to call when an account is removed from the store.
+## Relationships
+### Inherits From
+  * `NSObject`
+
+
+### Conforms To
+  * `CVarArg`
+  * `CustomDebugStringConvertible`
+  * `CustomStringConvertible`
+  * `Equatable`
+  * `Hashable`
+  * `NSObjectProtocol`
 """
     
     chunker = SmartChunker()
@@ -63,7 +98,7 @@ Avoid using deprecated symbols in your apps.
         print(f"包含大标题: {'✅' if has_title else '❌'}")
         print(f"包含Overview: {'✅' if has_overview else '❌'}")
         print(f"章节标题: {section_headers[0] if section_headers else '无'}")
-        print(f"内容预览: {chunk}...")
+        print(f"内容预览: {chunk}")
         print()
     
     # 验证预期结果
