@@ -14,7 +14,7 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from crawler import IndependentCrawler, CrawlerConfig
+from crawler import IndependentCrawler
 
 
 # ============================================================================
@@ -24,7 +24,6 @@ from crawler import IndependentCrawler, CrawlerConfig
 TARGET_URL = "https://developer.apple.com/documentation/visionos/"
 MAX_DEPTH = 2
 MAX_CONCURRENT = 5
-CHUNK_SIZE = 5000
 
 
 # ============================================================================
@@ -38,7 +37,7 @@ async def main() -> None:
     print(f"Target URL: {TARGET_URL}")
     print(f"Max Depth: {MAX_DEPTH}")
     print(f"Max Concurrent: {MAX_CONCURRENT}")
-    print(f"Chunk Size: {CHUNK_SIZE}")
+    print("Chunking: Apple文档双井号分割策略")
 
     # Validate URL
     if not TARGET_URL.startswith(("http://", "https://")):
@@ -46,18 +45,11 @@ async def main() -> None:
         print(f"Current value: {TARGET_URL}")
         return
 
-    # Create crawler configuration
-    config = CrawlerConfig.with_params(
-        max_depth=MAX_DEPTH,
-        max_concurrent=MAX_CONCURRENT,
-        chunk_size=CHUNK_SIZE
-    )
-
     # Execute crawl using independent crawler
     try:
         print("🚀 Starting smart website crawl...")
-        async with IndependentCrawler(config) as crawler:
-            result = await crawler.smart_crawl_url(TARGET_URL, MAX_DEPTH, MAX_CONCURRENT, CHUNK_SIZE)
+        async with IndependentCrawler() as crawler:
+            result = await crawler.smart_crawl_url(TARGET_URL)
 
         if result["success"]:
             print("✅ Smart website crawl completed successfully!")

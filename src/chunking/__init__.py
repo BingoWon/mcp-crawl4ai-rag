@@ -2,11 +2,10 @@
 Chunking Module
 文本分块模块
 
-Provides intelligent text chunking strategies for content processing.
-为内容处理提供智能文本分块策略。
+Apple文档专用双井号分块模块。
+Apple documentation specialized double-hash chunking module.
 """
 
-from .chunker import SmartChunker
-from .strategy import ChunkingStrategy
+from .chunker import SmartChunker, ChunkInfo, BreakPointType
 
-__all__ = ['SmartChunker', 'ChunkingStrategy']
+__all__ = ['SmartChunker', 'ChunkInfo', 'BreakPointType']

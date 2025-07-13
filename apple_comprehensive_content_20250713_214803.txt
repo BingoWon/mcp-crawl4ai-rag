@@ -1,0 +1,113 @@
+================================================================================
+主页面内容
+================================================================================
+  * [ Accounts ](https://developer.apple.com/documentation/accounts)
+  * ACAccountStore Deprecated
+
+
+Class
+# ACAccountStore
+The object you use to request, manage, and store the user’s account information.
+iOS 6.0–15.0DeprecatediPadOS 6.0–15.0DeprecatedMac Catalyst 13.1–15.0DeprecatedmacOS 10.8–12.0Deprecated
+```
+classACAccountStore
+```
+
+Deprecated
+Use appropriate non-Apple SDK corresponding to the type of account you want to reference instead
+## [Overview](https://developer.apple.com/documentation/accounts/acaccountstore#overview)
+The [`ACAccountStore`](https://developer.apple.com/documentation/accounts/acaccountstore) class provides an interface for accessing, managing, and storing accounts. To create and retrieve accounts from the Accounts database, you must create an [`ACAccountStore`](https://developer.apple.com/documentation/accounts/acaccountstore) object. Each [`ACAccount`](https://developer.apple.com/documentation/accounts/acaccount) object belongs to a single account store object.
+## [Topics](https://developer.apple.com/documentation/accounts/acaccountstore#topics)
+### [Requesting Access](https://developer.apple.com/documentation/accounts/acaccountstore#Requesting-Access)
+[`funcrequestAccessToAccounts(with: ACAccountType!, options: [AnyHashable : Any]!, completion: ((Bool, (any Error)?) -> Void)!)`](https://developer.apple.com/documentation/accounts/acaccountstore/requestaccesstoaccounts\(with:options:completion:\))
+Obtains permission to access protected user properties.
+[`typealiasACAccountStoreRequestAccessCompletionHandler`](https://developer.apple.com/documentation/accounts/acaccountstorerequestaccesscompletionhandler)
+Specifies a handler to call when access is granted or denied.
+### [Getting Accounts](https://developer.apple.com/documentation/accounts/acaccountstore#Getting-Accounts)
+[`varaccounts: NSArray!`](https://developer.apple.com/documentation/accounts/acaccountstore/accounts)
+The accounts managed by this account store.
+[`funcaccount(withIdentifier: String!) -> ACAccount!`](https://developer.apple.com/documentation/accounts/acaccountstore/account\(withidentifier:\))
+Returns the account with the specified identifier.
+[`funcaccounts(with: ACAccountType!) -> [Any]!`](https://developer.apple.com/documentation/accounts/acaccountstore/accounts\(with:\))
+Returns all accounts of the specified type.
+### [Getting Account Types](https://developer.apple.com/documentation/accounts/acaccountstore#Getting-Account-Types)
+[`funcaccountType(withAccountTypeIdentifier: String!) -> ACAccountType!`](https://developer.apple.com/documentation/accounts/acaccountstore/accounttype\(withaccounttypeidentifier:\))
+Returns an account type that matches the specified identifier.
+### [Saving Accounts](https://developer.apple.com/documentation/accounts/acaccountstore#Saving-Accounts)
+[`funcsaveAccount(ACAccount!, withCompletionHandler: ((Bool, (any Error)?) -> Void)!)`](https://developer.apple.com/documentation/accounts/acaccountstore/saveaccount\(_:withcompletionhandler:\))
+Saves an account to the Accounts database.
+[`typealiasACAccountStoreSaveCompletionHandler`](https://developer.apple.com/documentation/accounts/acaccountstoresavecompletionhandler)
+Specifies a handler to call when an Accounts database operation is complete.
+### [Renewing Account Credentials](https://developer.apple.com/documentation/accounts/acaccountstore#Renewing-Account-Credentials)
+[`funcrenewCredentials(for: ACAccount!, completion: ((ACAccountCredentialRenewResult, (any Error)?) -> Void)!)`](https://developer.apple.com/documentation/accounts/acaccountstore/renewcredentials\(for:completion:\))
+Renews account credentials when the credentials are no longer valid.
+[`typealiasACAccountStoreCredentialRenewalHandler`](https://developer.apple.com/documentation/accounts/acaccountstorecredentialrenewalhandler)
+Specifies a handler to call when credentials are renewed.
+[`enumACAccountCredentialRenewResult`](https://developer.apple.com/documentation/accounts/acaccountcredentialrenewresult)
+Status codes of credential renewal requests.
+### [Removing Accounts](https://developer.apple.com/documentation/accounts/acaccountstore#Removing-Accounts)
+[`funcremoveAccount(ACAccount!, withCompletionHandler: ((Bool, (any Error)?) -> Void)!)`](https://developer.apple.com/documentation/accounts/acaccountstore/removeaccount\(_:withcompletionhandler:\))
+Removes an account from the account store.
+[`typealiasACAccountStoreRemoveCompletionHandler`](https://developer.apple.com/documentation/accounts/acaccountstoreremovecompletionhandler)
+Specifies a handler to call when an account is removed from the store.
+## [Relationships](https://developer.apple.com/documentation/accounts/acaccountstore#relationships)
+### [Inherits From](https://developer.apple.com/documentation/accounts/acaccountstore#inherits-from)
+  * [`NSObject`](https://developer.apple.com/documentation/ObjectiveC/NSObject-swift.class)
+
+
+### [Conforms To](https://developer.apple.com/documentation/accounts/acaccountstore#conforms-to)
+  * [`CVarArg`](https://developer.apple.com/documentation/Swift/CVarArg)
+  * [`CustomDebugStringConvertible`](https://developer.apple.com/documentation/Swift/CustomDebugStringConvertible)
+  * [`CustomStringConvertible`](https://developer.apple.com/documentation/Swift/CustomStringConvertible)
+  * [`Equatable`](https://developer.apple.com/documentation/Swift/Equatable)
+  * [`Hashable`](https://developer.apple.com/documentation/Swift/Hashable)
+  * [`NSObjectProtocol`](https://developer.apple.com/documentation/ObjectiveC/NSObjectProtocol)
+
+
+## [See Also](https://developer.apple.com/documentation/accounts/acaccountstore#see-also)
+### [Account Management](https://developer.apple.com/documentation/accounts/acaccountstore#Account-Management)
+[`classACAccount`](https://developer.apple.com/documentation/accounts/acaccount)
+The information associated with one of the user’s accounts.
+Deprecated
+[`classACAccountCredential`](https://developer.apple.com/documentation/accounts/acaccountcredential)
+A credential object that encapsulates the information needed to authenticate a user.
+Deprecated
+
+
+================================================================================
+链接页面内容
+================================================================================
+
+================================================================================
+链接列表
+================================================================================
+1. https://developer.apple.com/documentation/Swift/CustomDebugStringConvertible
+2. https://developer.apple.com/documentation/Swift/Hashable
+3. https://developer.apple.com/documentation/accounts/acaccountstore/requestaccesstoaccounts(with:options:completion:)
+4. https://developer.apple.com/documentation/accounts/acaccountstore
+5. https://developer.apple.com/documentation/accounts/acaccountstore/accounts
+6. https://developer.apple.com/documentation/accounts/acerrorcode
+7. https://developer.apple.com/documentation/Swift/CustomStringConvertible
+8. https://developer.apple.com/documentation/ObjectiveC/NSObjectProtocol
+9. https://developer.apple.com/documentation/accounts/acaccounttype
+10. https://developer.apple.com/documentation/accounts/acaccountstoreremovecompletionhandler
+11. https://developer.apple.com/documentation/samplecode
+12. https://developer.apple.com/documentation/accounts/acaccount
+13. https://developer.apple.com/documentation/accounts
+14. https://developer.apple.com/documentation
+15. https://developer.apple.com/documentation/accounts/acaccountstoresavecompletionhandler
+16. https://developer.apple.com/documentation/accounts/acaccountstore/accounts(with:)
+17. https://developer.apple.com/documentation/accounts/acaccountstorecredentialrenewalhandler
+18. https://developer.apple.com/documentation/accounts/deprecated-symbols
+19. https://developer.apple.com/documentation/accounts/acaccountstore/accounttype(withaccounttypeidentifier:)
+20. https://developer.apple.com/documentation/accounts/acaccountstore/renewcredentials(for:completion:)
+21. https://developer.apple.com/documentation/accounts/acaccountstore/removeaccount(_:withcompletionhandler:)
+22. https://developer.apple.com/documentation/Swift/CVarArg
+23. https://developer.apple.com/documentation/accounts/acaccountstore/saveaccount(_:withcompletionhandler:)
+24. https://developer.apple.com/documentation/ObjectiveC/NSObject-swift.class
+25. https://developer.apple.com/documentation/accounts/acerrordomain
+26. https://developer.apple.com/documentation/accounts/acaccountcredential
+27. https://developer.apple.com/documentation/Swift/Equatable
+28. https://developer.apple.com/documentation/accounts/acaccountstorerequestaccesscompletionhandler
+29. https://developer.apple.com/documentation/accounts/acaccountstore/account(withidentifier:)
+30. https://developer.apple.com/documentation/accounts/acaccountcredentialrenewresult

@@ -33,7 +33,7 @@ def debug_markdown_recognition():
     print(repr(text))
     print()
     
-    chunker = SmartChunker(chunk_size=50)  # 使用更小的chunk_size强制分割
+    chunker = SmartChunker()  # Apple文档双井号分割
     chunks = chunker.chunk_text(text)
     
     print(f"生成块数: {len(chunks)}")
@@ -68,7 +68,7 @@ def debug_large_text():
     
     print(f"大文本长度: {len(text)} 字符")
     
-    chunker = SmartChunker(chunk_size=100)
+    chunker = SmartChunker()
     chunks = chunker.chunk_text(text)
     
     print(f"生成块数: {len(chunks)}")
