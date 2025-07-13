@@ -48,39 +48,18 @@ async def close_database_client() -> None:
         _database_operations = None
 
 
-# ============================================================================
-# BACKWARD COMPATIBILITY FUNCTIONS
-# ============================================================================
-
-async def add_documents_to_database(client, urls, chunk_numbers, contents, metadatas, url_to_full_document, batch_size=20):
-    """Backward compatibility function for adding documents"""
-    # Convert to new format
-    data = []
-    for i in range(len(urls)):
-        data.append({
-            'url': urls[i],
-            'chunk_number': chunk_numbers[i],
-            'content': contents[i],
-            'metadata': metadatas[i],
-            'source_id': metadatas[i].get('source', ''),
-            'embedding': None  # Will be set by caller
-        })
-    
-    # Use new operations
-    ops = await get_database_operations()
-    await ops.insert_crawled_pages(data)
 
 
 
 
 
-async def _search_documents_async(client, query, match_count=10, filter_metadata=None):
+
+async def _search_documents_async(client, query, match_count=10):
     """Backward compatibility function for document search"""
     ops = await get_database_operations()
-    
-    # For now, use keyword search (vector search requires embedding)
-    source_filter = filter_metadata.get('source') if filter_metadata else None
-    return await ops.search_documents_keyword(query, match_count, source_filter)
+
+    # Use keyword search
+    return await ops.search_documents_keyword(query, match_count)
 
 
 

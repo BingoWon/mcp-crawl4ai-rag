@@ -6,8 +6,7 @@ High-level database operations for crawled content and RAG functionality.
 爬取内容和RAG功能的高级数据库操作。
 """
 
-import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from .client import PostgreSQLClient
 
 
@@ -25,70 +24,49 @@ class DatabaseOperations:
         """Insert crawled pages data"""
         if not data:
             return
-            
+
         await self.client.execute_many("""
-            INSERT INTO crawled_pages (url, chunk_number, content, metadata, source_id, embedding)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (url, chunk_number) DO UPDATE SET
-                content = EXCLUDED.content,
-                metadata = EXCLUDED.metadata,
-                source_id = EXCLUDED.source_id,
-                embedding = EXCLUDED.embedding
+            INSERT INTO crawled_pages (url, content, embedding)
+            VALUES ($1, $2, $3)
         """, [
             (
                 item['url'],
-                item['chunk_number'],
                 item['content'],
-                json.dumps(item['metadata']) if item.get('metadata') else None,
-                item['source_id'],
                 item.get('embedding')
             )
             for item in data
         ])
     
-    async def search_documents_vector(self, query_embedding: List[float], 
-                                    match_count: int = 10, 
-                                    source_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def search_documents_vector(self, query_embedding: List[float],
+                                    match_count: int = 10) -> List[Dict[str, Any]]:
         """Vector similarity search in crawled_pages"""
-        if source_filter:
-            return await self.client.execute_query("""
-                SELECT id, url, chunk_number, content, metadata, source_id,
-                       1 - (embedding <=> $1::vector) as similarity
-                FROM crawled_pages
-                WHERE source_id = $2 AND embedding IS NOT NULL
-                ORDER BY embedding <=> $1::vector
-                LIMIT $3
-            """, query_embedding, source_filter, match_count)
-        else:
-            return await self.client.execute_query("""
-                SELECT id, url, chunk_number, content, metadata, source_id,
-                       1 - (embedding <=> $1::vector) as similarity
-                FROM crawled_pages
-                WHERE embedding IS NOT NULL
-                ORDER BY embedding <=> $1::vector
-                LIMIT $2
-            """, query_embedding, match_count)
+        return await self.client.execute_query("""
+            SELECT id, url, content,
+                   1 - (embedding <=> $1::vector) as similarity
+            FROM crawled_pages
+            WHERE embedding IS NOT NULL
+            ORDER BY embedding <=> $1::vector
+            LIMIT $2
+        """, query_embedding, match_count)
     
-    async def search_documents_keyword(self, query: str, 
-                                     match_count: int = 10,
-                                     source_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def search_documents_keyword(self, query: str,
+                                     match_count: int = 10) -> List[Dict[str, Any]]:
         """Keyword search in crawled_pages"""
-        if source_filter:
-            return await self.client.execute_query("""
-                SELECT id, url, chunk_number, content, metadata, source_id
-                FROM crawled_pages
-                WHERE content ILIKE $1 AND source_id = $2
-                ORDER BY id
-                LIMIT $3
-            """, f'%{query}%', source_filter, match_count)
-        else:
-            return await self.client.execute_query("""
-                SELECT id, url, chunk_number, content, metadata, source_id
-                FROM crawled_pages
-                WHERE content ILIKE $1
-                ORDER BY id
-                LIMIT $2
-            """, f'%{query}%', match_count)
+        return await self.client.execute_query("""
+            SELECT id, url, content
+            FROM crawled_pages
+            WHERE content ILIKE $1
+            ORDER BY created_at DESC
+            LIMIT $2
+        """, f'%{query}%', match_count)
+
+    async def get_all_crawled_urls(self) -> List[Dict[str, Any]]:
+        """Get all crawled URLs"""
+        return await self.client.execute_query("""
+            SELECT url, created_at
+            FROM crawled_pages
+            ORDER BY created_at DESC
+        """)
     
     async def url_exists(self, url: str) -> bool:
         """Check if URL already exists in crawled_pages"""
@@ -115,22 +93,4 @@ class DatabaseOperations:
     
 
     
-    # ============================================================================
-    # SOURCES OPERATIONS
-    # ============================================================================
-    
 
-    
-    async def get_sources(self) -> List[Dict[str, Any]]:
-        """Get all sources with statistics from crawled_pages"""
-        return await self.client.execute_query("""
-            SELECT
-                source_id,
-                COUNT(*) as total_chunks,
-                SUM(LENGTH(content)) as total_characters,
-                MIN(created_at) as first_crawled,
-                MAX(created_at) as last_updated
-            FROM crawled_pages
-            GROUP BY source_id
-            ORDER BY source_id
-        """)

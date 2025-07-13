@@ -27,14 +27,14 @@ async def verify_precision_integrity():
     async with PostgreSQLClient() as client:
         # Store the vector
         await client.execute_query('''
-            INSERT INTO crawled_pages (url, chunk_number, content, embedding, metadata, source_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
-        ''', 'test://precision-test-final', 1, test_text, str(original_embedding), '{}', 'precision-test-final')
+            INSERT INTO crawled_pages (url, content, embedding)
+            VALUES ($1, $2, $3)
+        ''', 'test://precision-test-final', test_text, str(original_embedding))
         
         # Retrieve the vector
         result = await client.execute_query('''
-            SELECT embedding FROM crawled_pages 
-            WHERE source_id = 'precision-test-final'
+            SELECT embedding FROM crawled_pages
+            WHERE url = 'test://precision-test-final'
         ''')
         
         if result:
@@ -64,8 +64,8 @@ async def verify_precision_integrity():
             # Test vector operations precision
             cosine_distance = await client.execute_query('''
                 SELECT embedding <=> $1 as distance
-                FROM crawled_pages 
-                WHERE source_id = 'precision-test-final'
+                FROM crawled_pages
+                WHERE url = 'test://precision-test-final'
             ''', str(original_embedding))
             
             distance = cosine_distance[0]['distance']

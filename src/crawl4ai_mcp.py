@@ -147,27 +147,22 @@ def create_embedding(text: str) -> List[float]:
 async def _search_documents_async(
     client,
     query: str,
-    match_count: int = 10,
-    filter_metadata: Optional[Dict[str, Any]] = None
+    match_count: int = 10
 ) -> List[Dict[str, Any]]:
     """Search for documents using vector similarity."""
-    import json
-
     # Create embedding for the query
     query_embedding = create_embedding(query)
 
     # Execute the search using the match_crawled_pages function
     result = await client.call_function('match_crawled_pages',
                                       query_embedding,
-                                      match_count,
-                                      json.dumps(filter_metadata or {}),
-                                      None)
+                                      match_count)
     return result
 
-def search_documents(client, query, match_count=10, filter_metadata=None):
+def search_documents(client, query, match_count=10):
     """Synchronous wrapper for search_documents."""
     import asyncio
-    return asyncio.run(_search_documents_async(client, query, match_count, filter_metadata))
+    return asyncio.run(_search_documents_async(client, query, match_count))
 
 
 
@@ -194,101 +189,52 @@ def parse_sitemap(sitemap_url: str) -> List[str]:
     return urls
 
 
-@mcp.tool()
-async def get_available_sources(ctx: Context) -> str:
-    """
-    Get all available sources with statistics.
 
-    Returns a list of all crawled sources with chunk counts and statistics.
-    Use this before performing RAG queries to see what sources are available.
-
-    Returns:
-        JSON string with the list of available sources and their statistics
-    """
-    try:
-        # Get the database operations from the context
-        db_operations = ctx.request_context.lifespan_context.db_operations
-        
-        # Query the sources table directly
-        sources_data = await db_operations.get_sources()
-
-        # Format the sources with their statistics
-        sources = []
-        if sources_data:
-            for source in sources_data:
-                sources.append({
-                    "source_id": source.get("source_id"),
-                    "total_chunks": source.get("total_chunks"),
-                    "total_characters": source.get("total_characters"),
-                    "first_crawled": source.get("first_crawled"),
-                    "last_updated": source.get("last_updated")
-                })
-        
-        return json.dumps({
-            "success": True,
-            "sources": sources,
-            "count": len(sources)
-        }, indent=2)
-    except Exception as e:
-        return json.dumps({
-            "success": False,
-            "error": str(e)
-        }, indent=2)
 
 @mcp.tool()
-async def perform_rag_query(ctx: Context, query: str, source: str = None, match_count: int = 5) -> str:
+async def perform_rag_query(ctx: Context, query: str, match_count: int = 5) -> str:
     """
     Perform a RAG (Retrieval Augmented Generation) query on the stored content.
-    
+
     This tool searches the vector database for content relevant to the query and returns
-    the matching documents. Optionally filter by source domain.
-    Get the source by using the get_available_sources tool before calling this search!
-    
+    the matching documents.
+
     Args:
         ctx: The MCP server provided context
         query: The search query
-        source: Optional source domain to filter results (e.g., 'example.com')
         match_count: Maximum number of results to return (default: 5)
-    
+
     Returns:
         JSON string with the search results
     """
     try:
         # Get the database operations from the context
         db_operations = ctx.request_context.lifespan_context.db_operations
-        
+
         # Check if hybrid search is enabled
         use_hybrid_search = os.getenv("USE_HYBRID_SEARCH", "false") == "true"
-        
-        # Prepare filter if source is provided and not empty
-        filter_metadata = None
-        if source and source.strip():
-            filter_metadata = {"source": source}
-        
+
         if use_hybrid_search:
             # Hybrid search: combine vector and keyword search
-            
-            # 1. Get vector search results (get more to account for filtering)
+
+            # 1. Get vector search results
             vector_results = search_documents(
                 client=ctx.request_context.lifespan_context.db_client,
                 query=query,
-                match_count=match_count * 2,  # Get double to have room for filtering
-                filter_metadata=filter_metadata
+                match_count=match_count * 2
             )
 
             # 2. Get keyword search results using database operations
-            db_operations = ctx.request_context.lifespan_context.db_operations
             keyword_results = await db_operations.search_documents_keyword(
                 query=query,
-                match_count=match_count * 2,
-                source_filter=source if source and source.strip() else None
+                match_count=match_count * 2
             )
-            
+
             # 3. Combine results with preference for items appearing in both
             seen_ids = set()
             combined_results = []
-            
-            # First, add items that appear in both searches (these are the best matches)
+
+            # First, add items that appear in both searches (highest priority)
             vector_ids = {r.get('id') for r in vector_results if r.get('id')}
             for kr in keyword_results:
                 if kr['id'] in vector_ids and kr['id'] not in seen_ids:
@@ -300,13 +246,13 @@ async def perform_rag_query(ctx: Context, query: str, source: str = None, match_
                             combined_results.append(vr)
                             seen_ids.add(kr['id'])
                             break
-            
-            # Then add remaining vector results (semantic matches without exact keyword)
+
+            # Then add remaining vector results
             for vr in vector_results:
                 if vr.get('id') and vr['id'] not in seen_ids and len(combined_results) < match_count:
                     combined_results.append(vr)
                     seen_ids.add(vr['id'])
-            
+
             # Finally, add pure keyword matches if we still need more results
             for kr in keyword_results:
                 if kr['id'] not in seen_ids and len(combined_results) < match_count:
@@ -314,49 +260,43 @@ async def perform_rag_query(ctx: Context, query: str, source: str = None, match_
                     combined_results.append({
                         'id': kr['id'],
                         'url': kr['url'],
-                        'chunk_number': kr['chunk_number'],
                         'content': kr['content'],
-                        'metadata': kr['metadata'],
-                        'source_id': kr['source_id'],
                         'similarity': 0.5  # Default similarity for keyword-only matches
                     })
                     seen_ids.add(kr['id'])
-            
+
             # Use combined results
             results = combined_results[:match_count]
-            
+
         else:
             # Standard vector search only
             results = search_documents(
                 client=ctx.request_context.lifespan_context.db_client,
                 query=query,
-                match_count=match_count,
-                filter_metadata=filter_metadata
+                match_count=match_count
             )
-        
+
         # Apply reranking if enabled
         use_reranking = os.getenv("USE_RERANKING", "false") == "true"
         if use_reranking and ctx.request_context.lifespan_context.reranking_model:
             results = rerank_results(ctx.request_context.lifespan_context.reranking_model, query, results, content_key="content")
-        
+
         # Format the results
         formatted_results = []
         for result in results:
             formatted_result = {
                 "url": result.get("url"),
                 "content": result.get("content"),
-                "metadata": result.get("metadata"),
                 "similarity": result.get("similarity")
             }
             # Include rerank score if available
             if "rerank_score" in result:
                 formatted_result["rerank_score"] = result["rerank_score"]
             formatted_results.append(formatted_result)
-        
+
         return json.dumps({
             "success": True,
             "query": query,
-            "source_filter": source,
             "search_mode": "hybrid" if use_hybrid_search else "vector",
             "reranking_applied": use_reranking and ctx.request_context.lifespan_context.reranking_model is not None,
             "results": formatted_results,
