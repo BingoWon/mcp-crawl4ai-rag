@@ -59,37 +59,16 @@ class PostgreSQLClient:
             # Create crawled_pages table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS crawled_pages (
-                    id SERIAL PRIMARY KEY,
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     url TEXT NOT NULL,
-                    chunk_number INTEGER NOT NULL,
                     content TEXT NOT NULL,
-                    metadata JSONB,
-                    source_id TEXT NOT NULL,
                     embedding vector(2560),
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    UNIQUE(url, chunk_number)
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """)
-            
-            # Create sources table
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS sources (
-                    id SERIAL PRIMARY KEY,
-                    source_id TEXT UNIQUE NOT NULL,
-                    summary TEXT,
-                    total_word_count INTEGER DEFAULT 0,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                )
-            """)
-            
 
-            
             # Create indexes for better performance
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_crawled_pages_source_id ON crawled_pages(source_id)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_crawled_pages_url ON crawled_pages(url)")
-
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_sources_source_id ON sources(source_id)")
             
             # Vector indexes not needed for exact search with vector(2560)
             # pgvector performs brute-force exact nearest neighbor search without indexes

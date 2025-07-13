@@ -8,7 +8,7 @@ Complete standalone crawling functionality with no MCP dependencies.
 
 import os
 from typing import List, Dict, Any, Optional
-from urllib.parse import urlparse
+
 from crawl4ai import AsyncWebCrawler
 
 # Import modules with unified style
@@ -142,11 +142,6 @@ class IndependentCrawler:
 
     async def _process_and_store_content(self, url: str, markdown: str) -> Dict[str, Any]:
         """Process and store single page content"""
-        # Generate source_id
-        parsed_url = urlparse(url)
-        source_id = parsed_url.netloc or parsed_url.path
-
-        # Chunk the content
         chunks = self.chunker.chunk_text_simple(markdown)
 
         if not chunks:
@@ -156,46 +151,34 @@ class IndependentCrawler:
                 "error": "No content to store after chunking"
             }
 
-        # Prepare data for storage
-        urls = [url] * len(chunks)
-        chunk_numbers = list(range(len(chunks)))
-        contents = chunks
-        metadatas = [{"chunk_index": i, "url": url, "source": source_id} for i in range(len(chunks))]
+        # Generate embeddings for each chunk
+        embeddings = create_embeddings_batch(chunks)
 
-        # Generate embeddings
-        embeddings = create_embeddings_batch(contents)
-
-        # Store in database
+        # Store each chunk separately with original URL
         data_to_insert = []
-        for i in range(len(chunks)):
+        for chunk, embedding in zip(chunks, embeddings):
             data_to_insert.append({
-                "url": urls[i],
-                "chunk_number": chunk_numbers[i],
-                "content": contents[i],
-                "metadata": metadatas[i],
-                "source_id": source_id,
-                "embedding": embeddings[i]
+                "url": url,
+                "content": chunk,
+                "embedding": str(embedding)
             })
 
-        # Insert into crawled_pages table
         await self.db_operations.insert_crawled_pages(data_to_insert)
 
         return {
             "success": True,
             "url": url,
             "chunks_stored": len(chunks),
-            "source_id": source_id,
             "total_characters": len(markdown)
         }
 
     async def _process_and_store_batch(self, crawl_results: List[Dict[str, Any]], crawl_type: str) -> Dict[str, Any]:
         """Process and store batch crawl results"""
         logger.info(f"Processing batch of {len(crawl_results)} crawl results")
-        urls = []
-        chunk_numbers = []
-        contents = []
-        metadatas = []
-        chunk_count = 0
+
+        # Collect all chunks for batch embedding
+        all_chunks = []
+        chunk_urls = []  # Track which chunk belongs to which URL
 
         for result in crawl_results:
             url = result['url']
@@ -204,56 +187,44 @@ class IndependentCrawler:
             if not markdown:
                 continue
 
-            # Generate source_id
-            parsed_url = urlparse(url)
-            source_id = parsed_url.netloc or parsed_url.path
+            chunks = self.chunker.chunk_text_simple(markdown)
+            if not chunks:
+                continue
 
-            # Chunk the content
-            chunker = SmartChunker()
-            chunks = chunker.chunk_text_simple(markdown)
+            # Collect chunks and their URLs
+            for chunk in chunks:
+                all_chunks.append(chunk)
+                chunk_urls.append(url)
 
-            for i, chunk in enumerate(chunks):
-                urls.append(url)
-                chunk_numbers.append(i)
-                contents.append(chunk)
-                metadatas.append({
-                    "chunk_index": i,
-                    "url": url,
-                    "source": source_id,
-                    "crawl_type": crawl_type
-                })
-                chunk_count += 1
-
-        if not contents:
+        if not all_chunks:
             return {
                 "success": False,
                 "error": "No content to store after processing"
             }
 
-        # Generate embeddings
-        embeddings = create_embeddings_batch(contents)
+        # Generate embeddings for all chunks in one batch
+        embeddings = create_embeddings_batch(all_chunks)
 
-        # Store in database
+        # Prepare data for insertion
         data_to_insert = []
-        for i in range(len(contents)):
+        for url, chunk, embedding in zip(chunk_urls, all_chunks, embeddings):
             data_to_insert.append({
-                "url": urls[i],
-                "chunk_number": chunk_numbers[i],
-                "content": contents[i],
-                "metadata": metadatas[i],
-                "source_id": metadatas[i]["source"],
-                "embedding": embeddings[i]
+                "url": url,
+                "content": chunk,
+                "embedding": str(embedding)
             })
 
-        # Insert into crawled_pages table
         await self.db_operations.insert_crawled_pages(data_to_insert)
-        logger.info(f"Batch processing completed: {len(crawl_results)} pages, {chunk_count} chunks stored")
+
+        total_chunks = len(data_to_insert)
+        total_pages = len(set(chunk_urls))
+        logger.info(f"Batch processing completed: {total_pages} pages, {total_chunks} chunks stored")
 
         return {
             "success": True,
             "crawl_type": crawl_type,
-            "total_pages": len(crawl_results),
-            "total_chunks": chunk_count
+            "total_pages": total_pages,
+            "total_chunks": total_chunks
         }
 
 

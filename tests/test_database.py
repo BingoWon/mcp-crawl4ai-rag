@@ -23,8 +23,8 @@ async def test_database_operations():
         db_ops = DatabaseOperations(client)
         
         # Test basic operations
-        sources = await db_ops.get_sources()
-        assert isinstance(sources, list)
+        urls = await db_ops.get_all_crawled_urls()
+        assert isinstance(urls, list)
         print("✅ Database operations test passed")
 
 
@@ -56,11 +56,8 @@ async def test_vector_2560_no_index():
 
             test_data.append({
                 'url': f'test://vector-test-{i}',
-                'chunk_number': 1,
                 'content': text,
-                'embedding': str(embedding),
-                'metadata': {"test": True, "doc_id": i},
-                'source_id': f'test-source-{i}'
+                'embedding': str(embedding)
             })
 
         try:
@@ -77,7 +74,7 @@ async def test_vector_2560_no_index():
             results = await client.execute_query("""
                 SELECT url, content, embedding, embedding <=> $1 as distance
                 FROM crawled_pages
-                WHERE source_id LIKE 'test-source-%'
+                WHERE url LIKE 'test://vector-test-%'
                 ORDER BY embedding <=> $1
                 LIMIT 3
             """, str(query_embedding))
