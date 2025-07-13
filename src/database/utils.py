@@ -85,13 +85,13 @@ async def get_database_stats() -> dict:
     try:
         client = await get_database_client()
         
-        crawled_pages_count = await client.fetch_val("SELECT COUNT(*) FROM crawled_pages")
-        sources_count = await client.fetch_val("SELECT COUNT(*) FROM sources")
+        chunks_count = await client.fetch_val("SELECT COUNT(*) FROM chunks")
+        pages_count = await client.fetch_val("SELECT COUNT(*) FROM pages")
 
         return {
-            'crawled_pages': crawled_pages_count,
-            'sources': sources_count,
-            'total_records': crawled_pages_count
+            'chunks': chunks_count,
+            'pages': pages_count,
+            'total_records': chunks_count
         }
     except Exception as e:
         print(f"❌ Failed to get database stats: {e}")
