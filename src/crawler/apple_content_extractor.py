@@ -21,42 +21,14 @@ class AppleContentExtractor:
         if self.crawler:
             await self.crawler.__aexit__(exc_type, exc_val, exc_tb)
     
-    async def extract_clean_content(self, url: str) -> Dict[str, Any]:
+    async def extract_clean_content(self, url: str):
         """提取Apple文档的纯净内容"""
-        if not self.crawler:
-            raise RuntimeError("Extractor not initialized. Use async with statement.")
-
-        result = await self.crawler.extract_content(url)
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "url": url,
-                "error": result["error"],
-                "clean_content": None
-            }
-
-        raw_content = result["markdown"]
-        clean_content = self._post_process_content(raw_content)
-
-        return {
-            "success": True,
-            "url": url,
-            "clean_content": clean_content
-        }
+        markdown = await self.crawler.extract_content(url)
+        return self._post_process_content(markdown)
     
     def _post_process_content(self, content: str) -> str:
         """后处理内容，清理导航元素、图片内容和"See Also"部分"""
-        # 删除顶部导航块：找到第一个标题，删除之前的所有内容
         lines = content.split('\n')
-        # first_title_index = -1
-        # for i, line in enumerate(lines):
-        #     if line.strip().startswith('#'):
-        #         first_title_index = i
-        #         break
-
-        # if first_title_index > 0:
-        #     lines = lines[first_title_index:]
 
         clean_lines = []
 

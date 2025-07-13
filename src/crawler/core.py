@@ -79,13 +79,8 @@ class IndependentCrawler:
         """Crawl Apple documentation using specialized extractor"""
         try:
             async with AppleContentExtractor() as extractor:
-                result = await extractor.extract_clean_content(url)
-
-                if result["success"]:
-                    return [{'url': url, 'markdown': result["clean_content"]}]
-                else:
-                    print(f"❌ Apple extraction failed for {url}: {result.get('error', 'Unknown error')}")
-                    return []
+                clean_content = await extractor.extract_clean_content(url)
+                return [{'url': url, 'markdown': clean_content}] if clean_content else []
         except Exception as e:
             print(f"❌ Apple extractor error for {url}: {e}")
             return []
@@ -95,11 +90,8 @@ class IndependentCrawler:
         try:
             from .apple_stealth_crawler import AppleStealthCrawler
             async with AppleStealthCrawler() as stealth_crawler:
-                result = await stealth_crawler.extract_full_page(url)
-
-                if result["success"] and result.get("links"):
-                    return self._extract_links_from_data(result["links"])
-                return []
+                links = await stealth_crawler.extract_links(url)
+                return self._extract_links_from_data(links) if links else []
         except Exception as e:
             print(f"❌ Apple link extraction error for {url}: {e}")
             return []
