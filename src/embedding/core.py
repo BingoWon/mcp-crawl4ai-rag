@@ -2,10 +2,12 @@
 Embedding Core
 嵌入核心
 
-Unified embedding interfaces and factory system.
-统一的嵌入接口和工厂系统。
+Process-safe unified embedding interfaces and factory system.
+进程安全的统一嵌入接口和工厂系统。
 """
 
+import os
+import threading
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
@@ -49,34 +51,52 @@ class EmbeddingProvider(ABC):
         pass
 
 
-# Global embedding provider instance
+# Process-safe global embedding provider instance
 _global_embedder: Optional[EmbeddingProvider] = None
+_embedder_lock = threading.Lock()
+_current_pid = None
 
 
 def get_embedder(config: Optional[EmbeddingConfig] = None) -> EmbeddingProvider:
     """
-    Get or create global embedding provider instance
-    
+    Get or create process-safe global embedding provider instance
+
     Args:
         config: Optional configuration, uses default if None
-        
+
     Returns:
         Embedding provider instance
     """
-    global _global_embedder
-    
-    if _global_embedder is None:
-        if config is None:
-            config = EmbeddingConfig()
-        
-        if config.provider == "api":
-            from .providers import SiliconFlowProvider
-            _global_embedder = SiliconFlowProvider(config)
-        else:
-            from .providers import LocalQwen3Provider
-            _global_embedder = LocalQwen3Provider(config)
-    
+    global _global_embedder, _current_pid
+
+    # Check if we're in a different process (after fork)
+    current_pid = os.getpid()
+
+    with _embedder_lock:
+        if _global_embedder is None or _current_pid != current_pid:
+            # Set TOKENIZERS_PARALLELISM to prevent fork conflicts
+            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+            _current_pid = current_pid
+            if config is None:
+                config = EmbeddingConfig()
+
+            if config.provider == "api":
+                from .providers import SiliconFlowProvider
+                _global_embedder = SiliconFlowProvider(config)
+            else:
+                from .providers import LocalQwen3Provider
+                _global_embedder = LocalQwen3Provider(config)
+
     return _global_embedder
+
+
+def reset_embedder() -> None:
+    """Reset the global embedder instance (for testing only)"""
+    global _global_embedder, _current_pid
+    with _embedder_lock:
+        _global_embedder = None
+        _current_pid = None
 
 
 def create_embedding(text: str, is_query: bool = False) -> List[float]:
