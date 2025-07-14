@@ -41,9 +41,15 @@ async def get_pages() -> JSONResponse:
             # 格式化数据
             formatted_pages = []
             for page in pages:
+                # 简化URL显示
+                display_url = page["url"]
+                if display_url.startswith("https://developer.apple.com/documentation"):
+                    display_url = display_url.replace("https://developer.apple.com/documentation", "...")
+
                 formatted_pages.append({
                     "id": str(page["id"]),
-                    "url": page["url"],
+                    "url": display_url,
+                    "full_url": page["url"],  # 完整URL
                     "content": page["content"][:100] + "..." if len(page["content"]) > 100 else page["content"],
                     "full_content": page["content"],  # 完整内容
                     "crawl_count": page["crawl_count"],
@@ -78,21 +84,27 @@ async def get_chunks() -> JSONResponse:
             # 格式化数据
             formatted_chunks = []
             for chunk in chunks:
-                # 处理embedding数据
+                # 简化URL显示
+                display_url = chunk["url"]
+                if display_url.startswith("https://developer.apple.com/documentation"):
+                    display_url = display_url.replace("https://developer.apple.com/documentation", "...")
+
+                # 处理embedding数据 - 直接显示前5个值
                 embedding_info = "无"
                 if chunk["embedding"]:
                     try:
-                        # 解析embedding字符串为数组
                         import ast
                         embedding_array = ast.literal_eval(chunk["embedding"])
                         if isinstance(embedding_array, list) and len(embedding_array) > 0:
-                            embedding_info = f"向量维度: {len(embedding_array)}, 前5个值: {embedding_array[:5]}"
-                    except:
+                            # 直接显示前5个值，保留4位小数
+                            embedding_info = str([round(x, 4) for x in embedding_array[:5]])
+                    except Exception:
                         embedding_info = "解析错误"
 
                 formatted_chunks.append({
                     "id": str(chunk["id"]),
-                    "url": chunk["url"],
+                    "url": display_url,
+                    "full_url": chunk["url"],  # 完整URL
                     "content": chunk["content"][:100] + "..." if len(chunk["content"]) > 100 else chunk["content"],
                     "full_content": chunk["content"],  # 完整内容
                     "created_at": chunk["created_at"].isoformat() if chunk["created_at"] else None,

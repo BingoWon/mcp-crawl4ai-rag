@@ -91,10 +91,30 @@ body {
   position: relative;
 }
 
-/* 表格容器 */
+/* 表格容器 - 虚拟滚动 */
 .table-container {
   height: 100%;
   overflow: auto;
+}
+
+.virtual-scroll-container {
+  position: relative;
+}
+
+.virtual-spacer {
+  width: 100%;
+  /* 高度由JS动态设置 */
+}
+
+.virtual-table {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
+.virtual-tbody {
+  /* 虚拟tbody样式 */
 }
 
 table {

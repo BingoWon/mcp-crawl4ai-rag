@@ -157,17 +157,22 @@ class IndependentCrawler:
 
         # 1. Crawl content
         apple_results = await self.crawl_apple_documentation(url)
-        if not apple_results:
-            logger.warning(f"No content crawled for {url}")
-            return
 
-        content = apple_results[0]['markdown']
+        # 即便没有爬到结果也要更新数据库
+        content = ""
+        if apple_results:
+            content = apple_results[0]['markdown']
 
-        # 2. Delete old chunks for this URL
-        await self.db_operations.delete_chunks_by_url(url)
+            # 2. Delete old chunks for this URL
+            await self.db_operations.delete_chunks_by_url(url)
 
         # 3. Update page content and crawl_count
         await self.db_operations.update_page_after_crawl(url, content)
+
+        # 3.1. 如果没有爬到内容，则不进行后续处理
+        if not content:
+            logger.info(f"No content crawled for {url}, skipping chunking and embedding")
+            return
 
         # 4. Process content: chunking + embedding + storage
         chunks = self.chunker.chunk_text_simple(content)
