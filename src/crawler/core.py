@@ -118,23 +118,25 @@ class IndependentCrawler:
             return []
 
     async def smart_crawl_url(self, url: str) -> Dict[str, Any]:
-        """Apple文档专用爬取 - 只处理Apple文档"""
+        """Apple文档专用爬取 - 流式实时处理"""
         if not self.crawler or not self.db_operations:
             raise RuntimeError("Crawler not initialized. Use async with statement.")
 
         if not url.startswith(self.APPLE_DOCS_URL_PREFIX):
             return {"success": False, "url": url, "error": "Only Apple documentation URLs are supported"}
 
-        logger.info(f"Starting crawl for URL: {url}")
+        logger.info(f"Starting streaming crawl for URL: {url}")
         try:
-            crawl_results = await self._crawl_recursive_apple_docs([url], int(os.getenv('MAX_DEPTH', '3')))
+            # 流式递归爬取：每个页面立即处理，不等待批量
+            stats = await self._crawl_recursive_streaming([url], int(os.getenv('MAX_DEPTH', '3')))
 
-            if not crawl_results:
-                return {"success": False, "url": url, "error": "No content found"}
-
-            result = await self._process_and_store_batch(crawl_results, "apple_recursive")
-            logger.info(f"Crawl completed for URL: {url}")
-            return result
+            logger.info(f"Streaming crawl completed for URL: {url}")
+            return {
+                "success": True,
+                "crawl_type": "apple_streaming",
+                "total_pages": stats["pages_processed"],
+                "total_chunks": stats["chunks_stored"]
+            }
 
         except Exception as e:
             logger.error(f"Crawl failed for URL {url}: {e}")
@@ -176,7 +178,16 @@ class IndependentCrawler:
         }
 
     async def _process_and_store_batch(self, crawl_results: List[Dict[str, Any]], crawl_type: str) -> Dict[str, Any]:
-        """Process and store batch crawl results"""
+        """
+        DEPRECATED: 批量处理方法 - 等待所有页面收集完成后批量处理
+
+        此方法存在性能问题：
+        1. 需要等待所有页面爬取完成
+        2. 批量生成embedding，内存占用大
+        3. 用户无法实时看到处理进度
+
+        推荐使用: _process_and_store_content() 实现单页面实时处理
+        """
         logger.info(f"Processing batch of {len(crawl_results)} crawl results")
 
         # Collect all chunks for batch embedding
@@ -235,8 +246,73 @@ class IndependentCrawler:
 
 
 
+    async def _crawl_recursive_streaming(self, start_urls: List[str], max_depth: int) -> Dict[str, int]:
+        """流式递归爬取：每个页面立即处理，不等待批量"""
+        if not self.crawler:
+            return {"pages_processed": 0, "chunks_stored": 0}
+
+        logger.info(f"Starting streaming recursive crawl: {len(start_urls)} URLs, max depth: {max_depth}")
+
+        # 统计信息
+        total_pages_processed = 0
+        total_chunks_stored = 0
+        current_urls = start_urls
+
+        for depth in range(max_depth):
+            if not current_urls:
+                break
+
+            logger.info(f"Depth {depth + 1}: Processing {len(current_urls)} URLs")
+
+            next_level_urls = set()
+            depth_pages_processed = 0
+
+            for i, url in enumerate(current_urls, 1):
+                # 添加到内存中的已爬取URL集合
+                self.crawled_urls.add(url)
+
+                # 爬取页面内容
+                apple_results = await self.crawl_apple_documentation(url)
+
+                if apple_results:
+                    # 立即处理每个页面：chunk + embed + store
+                    for result in apple_results:
+                        process_result = await self._process_and_store_content(
+                            result['url'],
+                            result['markdown']
+                        )
+
+                        if process_result["success"]:
+                            total_pages_processed += 1
+                            total_chunks_stored += process_result["chunks_stored"]
+                            depth_pages_processed += 1
+                            logger.info(f"✅ Processed {result['url']}: {process_result['chunks_stored']} chunks stored")
+                        else:
+                            logger.warning(f"❌ Failed to process {result['url']}: {process_result.get('error', 'Unknown error')}")
+
+                # 发现新链接（用于下一层递归）
+                links = await self._extract_apple_links(url)
+                self._add_apple_links_to_queue(links, next_level_urls)
+
+                logger.info(f"Depth {depth + 1}: Completed {i}/{len(current_urls)} URLs")
+
+            current_urls = list(next_level_urls)
+            logger.info(f"Depth {depth + 1} completed: {depth_pages_processed} pages processed, {len(next_level_urls)} new URLs discovered")
+
+        logger.info(f"Streaming crawl completed: {total_pages_processed} pages, {total_chunks_stored} chunks")
+        return {"pages_processed": total_pages_processed, "chunks_stored": total_chunks_stored}
+
     async def _crawl_recursive_apple_docs(self, start_urls: List[str], max_depth: int) -> List[Dict[str, Any]]:
-        """Unified recursive crawling with Apple documentation integration"""
+        """
+        DEPRECATED: 批量递归爬取方法 - 等待所有页面完成后批量处理
+
+        此方法存在性能问题：
+        1. 等待所有递归深度完成才开始处理
+        2. 批量生成embedding，内存占用大
+        3. 用户需要等待整个递归完成才能看到结果
+
+        推荐使用: _crawl_recursive_streaming() 实现实时流式处理
+        """
         if not self.crawler:
             return []
 

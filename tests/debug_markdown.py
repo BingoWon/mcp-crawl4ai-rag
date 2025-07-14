@@ -13,7 +13,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from chunking import SmartChunker
-from chunking.strategy import BreakPointType
 
 
 def debug_markdown_recognition():
@@ -40,17 +39,16 @@ def debug_markdown_recognition():
     print()
     
     for i, chunk in enumerate(chunks):
-        print(f"块 {i+1} ({chunk.break_type.value}):")
-        print(f"  位置: {chunk.start_pos}-{chunk.end_pos}")
-        print(f"  长度: {len(chunk.content)} 字符")
-        print(f"  内容: {repr(chunk.content)}")
+        print(f"块 {i+1}:")
+        print(f"  长度: {len(chunk)} 字符")
+        print(f"  内容: {repr(chunk)}")
         print()
-        
-        # 检查是否包含 ### 并且被标记为 MARKDOWN_HEADER
-        if chunk.break_type == BreakPointType.MARKDOWN_HEADER and '###' in chunk.content:
-            print(f"  ❌ 错误：包含 ### 但被标记为 MARKDOWN_HEADER")
-        elif chunk.break_type == BreakPointType.MARKDOWN_HEADER and '## ' in chunk.content:
-            print(f"  ✅ 正确：包含 ## 并被标记为 MARKDOWN_HEADER")
+
+        # 检查是否包含 ### 和 ##
+        if '###' in chunk and '## ' in chunk:
+            print(f"  ✅ 正确：包含 ## 和 ### (### 被包含在 ## 章节中)")
+        elif '## ' in chunk:
+            print(f"  ✅ 正确：包含 ## 章节标题")
 
 
 def debug_large_text():
@@ -73,21 +71,17 @@ def debug_large_text():
     
     print(f"生成块数: {len(chunks)}")
     
-    markdown_header_chunks = []
     for i, chunk in enumerate(chunks):
-        print(f"块 {i+1} ({chunk.break_type.value}): {len(chunk.content)} 字符")
-        
-        if chunk.break_type == BreakPointType.MARKDOWN_HEADER:
-            markdown_header_chunks.append(chunk)
-            print(f"  内容开头: {repr(chunk.content[:30])}...")
-            
-            # 检查分割点
-            if chunk.content.startswith('## '):
-                print(f"  ✅ 正确：在 ## 标题处分割")
-            elif '### ' in chunk.content:
-                print(f"  ❌ 错误：包含 ### 标题")
-    
-    print(f"\nMarkdown 标题块总数: {len(markdown_header_chunks)}")
+        print(f"块 {i+1}: {len(chunk)} 字符")
+        print(f"  内容开头: {repr(chunk[:30])}...")
+
+        # 检查分割点
+        if chunk.startswith('## '):
+            print(f"  ✅ 正确：在 ## 标题处分割")
+        elif '### ' in chunk:
+            print(f"  ⚠️  包含 ### 标题（应该被包含在 ## 章节中）")
+
+    print(f"\n总块数: {len(chunks)}")
 
 
 def main():

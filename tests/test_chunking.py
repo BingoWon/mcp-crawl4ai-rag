@@ -12,7 +12,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from chunking import SmartChunker, BreakPointType
+from chunking import SmartChunker
 
 
 def test_basic_chunking():
@@ -59,17 +59,15 @@ First section content.
 ## Second Section
 Second section content."""
 
-    chunk_infos = chunker.chunk_text(text)
-    print(f"详细分块结果: {len(chunk_infos)} 个块")
+    chunks = chunker.chunk_text(text)
+    print(f"详细分块结果: {len(chunks)} 个块")
 
-    for chunk_info in chunk_infos:
-        print(f"  块 {chunk_info.chunk_index + 1}:")
-        print(f"    长度: {len(chunk_info.content)} 字符")
-        print(f"    分割类型: {chunk_info.break_type.value}")
-        print(f"    内容预览: {chunk_info.content}...")
+    for i, chunk in enumerate(chunks):
+        print(f"  块 {i + 1}:")
+        print(f"    长度: {len(chunk)} 字符")
+        print(f"    内容预览: {chunk[:100]}...")
 
-    assert len(chunk_infos) == 2, "应该生成2个块"
-    assert all(chunk.break_type == BreakPointType.MARKDOWN_HEADER for chunk in chunk_infos), "所有块都应该是双井号分割"
+    assert len(chunks) == 2, "应该生成2个块"
     print("✅ 详细分块测试通过\n")
 
 
@@ -102,21 +100,13 @@ Content two."""
     assert len(chunks) == 2, "应该只有2个块（Section One + Section Two）"
 
     # 检查第一个块是否包含三井号内容
-    first_chunk = chunks[0].content
+    first_chunk = chunks[0]
     assert "### Subsection" in first_chunk, "第一个块应该包含三井号内容"
 
     print("✅ 双井号分割测试通过\n")
 
 
-def test_break_point_type():
-    """测试分割点类型"""
-    print("🧪 测试分割点类型...")
 
-    # 测试BreakPointType枚举
-    assert BreakPointType.MARKDOWN_HEADER.value == "markdown_header"
-    print(f"分割类型: {BreakPointType.MARKDOWN_HEADER.value}")
-
-    print("✅ 分割点类型测试通过\n")
 
 
 def test_edge_cases():
@@ -151,7 +141,6 @@ def main():
         test_basic_chunking()
         test_detailed_chunking()
         test_double_hash_splitting()
-        test_break_point_type()
         test_edge_cases()
         
         print("🎉 所有测试通过！")
