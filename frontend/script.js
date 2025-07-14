@@ -272,10 +272,10 @@ class DatabaseViewer {
 
     // 渲染可见行
     vs.tbody.innerHTML = visibleItems
-      .map((item, index) => {
+      .map((item) => {
         return type === "pages"
-          ? this.createPageRow(item, startIndex + index)
-          : this.createChunkRow(item, startIndex + index);
+          ? this.createPageRow(item)
+          : this.createChunkRow(item);
       })
       .join("");
 
@@ -287,10 +287,9 @@ class DatabaseViewer {
     vs.tbody.parentElement.style.transform = `translateY(${offset}px)`;
   }
 
-  createPageRow(page, index) {
+  createPageRow(page) {
     return `
       <tr>
-        <td class="row-number">${index + 1}</td>
         <td class="url-cell" title="${page.full_url || page.url}"
             onclick="showContentModal('${page.id}', '${this.escapeJsString(
       page.full_url || page.url
@@ -303,10 +302,9 @@ class DatabaseViewer {
     `;
   }
 
-  createChunkRow(chunk, index) {
+  createChunkRow(chunk) {
     return `
       <tr>
-        <td class="row-number">${index + 1}</td>
         <td class="url-cell" title="${chunk.full_url || chunk.url}"
             onclick="showContentModal('${chunk.id}', '${this.escapeJsString(
       chunk.full_url || chunk.url
