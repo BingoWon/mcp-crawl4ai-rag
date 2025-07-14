@@ -7,7 +7,6 @@ Modern async PostgreSQL client with pgvector support.
 """
 
 import asyncpg
-import json
 from typing import List, Dict, Any, Optional
 from .config import PostgreSQLConfig
 
@@ -55,7 +54,28 @@ class PostgreSQLClient:
         async with self.pool.acquire() as conn:
             # Enable pgvector extension
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
-            
+
+            # Create pages table with crawl_count
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pages (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    url TEXT UNIQUE NOT NULL,
+                    crawl_count INTEGER DEFAULT 0,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    content TEXT NOT NULL
+                )
+            """)
+
+            # Add crawl_count column if it doesn't exist (for existing tables)
+            try:
+                await conn.execute("""
+                    ALTER TABLE pages
+                    ADD COLUMN IF NOT EXISTS crawl_count INTEGER DEFAULT 0
+                """)
+            except Exception:
+                pass  # Column might already exist
+
             # Create chunks table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS chunks (
@@ -67,11 +87,10 @@ class PostgreSQLClient:
                 )
             """)
 
-            # Create indexes for better performance
+            # Create indexes for performance
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_crawl_count ON pages(crawl_count)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_url ON chunks(url)")
-            
-            # Vector indexes not needed for exact search with vector(2560)
-            # pgvector performs brute-force exact nearest neighbor search without indexes
     
     async def execute_query(self, query: str, *args) -> List[Dict[str, Any]]:
         """Execute a query and return results as list of dicts"""

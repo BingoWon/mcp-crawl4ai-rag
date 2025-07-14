@@ -3,10 +3,8 @@
 极简API接口 - 获取pages和chunks数据
 """
 
-import asyncio
 import sys
 from pathlib import Path
-from typing import List, Dict, Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -35,11 +33,11 @@ async def get_pages() -> JSONResponse:
     try:
         async with PostgreSQLClient() as client:
             pages = await client.execute_query("""
-                SELECT id, url, content, created_at, updated_at
+                SELECT id, url, content, crawl_count, created_at, updated_at
                 FROM pages
-                ORDER BY created_at DESC
+                ORDER BY crawl_count ASC, created_at DESC
             """)
-            
+
             # 格式化数据
             formatted_pages = []
             for page in pages:
@@ -47,10 +45,12 @@ async def get_pages() -> JSONResponse:
                     "id": str(page["id"]),
                     "url": page["url"],
                     "content": page["content"][:100] + "..." if len(page["content"]) > 100 else page["content"],
+                    "full_content": page["content"],  # 完整内容
+                    "crawl_count": page["crawl_count"],
                     "created_at": page["created_at"].isoformat() if page["created_at"] else None,
                     "updated_at": page["updated_at"].isoformat() if page["updated_at"] else None
                 })
-            
+
             return JSONResponse({
                 "success": True,
                 "count": len(formatted_pages),
@@ -70,23 +70,36 @@ async def get_chunks() -> JSONResponse:
     try:
         async with PostgreSQLClient() as client:
             chunks = await client.execute_query("""
-                SELECT id, url, content, created_at, 
-                       CASE WHEN embedding IS NOT NULL THEN 'Yes' ELSE 'No' END as has_embedding
+                SELECT id, url, content, created_at, embedding
                 FROM chunks
                 ORDER BY created_at DESC
             """)
-            
+
             # 格式化数据
             formatted_chunks = []
             for chunk in chunks:
+                # 处理embedding数据
+                embedding_info = "无"
+                if chunk["embedding"]:
+                    try:
+                        # 解析embedding字符串为数组
+                        import ast
+                        embedding_array = ast.literal_eval(chunk["embedding"])
+                        if isinstance(embedding_array, list) and len(embedding_array) > 0:
+                            embedding_info = f"向量维度: {len(embedding_array)}, 前5个值: {embedding_array[:5]}"
+                    except:
+                        embedding_info = "解析错误"
+
                 formatted_chunks.append({
                     "id": str(chunk["id"]),
                     "url": chunk["url"],
                     "content": chunk["content"][:100] + "..." if len(chunk["content"]) > 100 else chunk["content"],
+                    "full_content": chunk["content"],  # 完整内容
                     "created_at": chunk["created_at"].isoformat() if chunk["created_at"] else None,
-                    "has_embedding": chunk["has_embedding"]
+                    "embedding_info": embedding_info,
+                    "raw_embedding": chunk["embedding"]  # 原始embedding数据
                 })
-            
+
             return JSONResponse({
                 "success": True,
                 "count": len(formatted_chunks),

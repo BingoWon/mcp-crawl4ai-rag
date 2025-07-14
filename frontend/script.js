@@ -110,8 +110,13 @@ class DatabaseViewer {
       .map(
         (page) => `
             <tr>
-                <td title="${page.url}">${page.url}</td>
+                <td title="${page.url}" onclick="showContentModal('${
+          page.id
+        }', '${page.url}', '${this.escapeHtml(page.full_content)}', 'page')">${
+          page.url
+        }</td>
                 <td title="${page.content}">${page.content}</td>
+                <td><span class="crawl-count">${page.crawl_count}</span></td>
                 <td>${this.formatDate(page.created_at)}</td>
                 <td>${this.formatDate(page.updated_at)}</td>
             </tr>
@@ -134,11 +139,15 @@ class DatabaseViewer {
       .map(
         (chunk) => `
             <tr>
-                <td title="${chunk.url}">${chunk.url}</td>
+                <td title="${chunk.url}" onclick="showContentModal('${
+          chunk.id
+        }', '${chunk.url}', '${this.escapeHtml(
+          chunk.full_content
+        )}', 'chunk', '${this.escapeHtml(
+          chunk.embedding_info
+        )}', '${this.escapeHtml(chunk.raw_embedding)}')">${chunk.url}</td>
                 <td title="${chunk.content}">${chunk.content}</td>
-                <td class="embedding-${chunk.has_embedding.toLowerCase()}">${
-          chunk.has_embedding
-        }</td>
+                <td class="embedding-info">${chunk.embedding_info}</td>
                 <td>${this.formatDate(chunk.created_at)}</td>
             </tr>
         `
@@ -190,6 +199,13 @@ class DatabaseViewer {
     });
   }
 
+  escapeHtml(text) {
+    if (!text) return "";
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   startAutoRefresh() {
     setInterval(() => {
       this.loadData();
@@ -215,6 +231,66 @@ class DatabaseViewer {
 
 // 全局变量
 let dbViewer;
+
+// 模态框相关函数
+function showContentModal(
+  id,
+  url,
+  content,
+  type,
+  embeddingInfo = "",
+  rawEmbedding = ""
+) {
+  const modal = document.getElementById("content-modal");
+  const modalTitle = document.getElementById("modal-title");
+  const modalUrl = document.getElementById("modal-url");
+  const modalContent = document.getElementById("modal-content");
+  const modalEmbeddingSection = document.getElementById(
+    "modal-embedding-section"
+  );
+  const modalEmbeddingInfo = document.getElementById("modal-embedding-info");
+  const modalEmbeddingRaw = document.getElementById("modal-embedding-raw");
+
+  // 设置标题
+  modalTitle.textContent = type === "page" ? "页面详情" : "Chunk详情";
+
+  // 设置URL
+  modalUrl.textContent = url;
+
+  // 设置内容
+  modalContent.textContent = content || "无内容";
+
+  // 设置embedding信息（仅对chunks显示）
+  if (type === "chunk" && embeddingInfo) {
+    modalEmbeddingSection.style.display = "block";
+    modalEmbeddingInfo.textContent = embeddingInfo;
+    modalEmbeddingRaw.textContent = rawEmbedding || "无原始数据";
+  } else {
+    modalEmbeddingSection.style.display = "none";
+  }
+
+  // 显示模态框
+  modal.style.display = "flex";
+}
+
+function closeModal() {
+  document.getElementById("content-modal").style.display = "none";
+}
+
+// 点击模态框外部关闭
+document.addEventListener("click", (e) => {
+  const modal = document.getElementById("content-modal");
+  if (e.target === modal) {
+    closeModal();
+  }
+});
+
+// ESC键关闭模态框
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    closeModal();
+  }
+});
 
 // 页面加载完成后启动
 document.addEventListener("DOMContentLoaded", () => {
