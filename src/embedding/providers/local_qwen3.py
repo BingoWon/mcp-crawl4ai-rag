@@ -8,7 +8,7 @@ High-performance local Qwen3-Embedding-4B implementation.
 
 import torch
 import torch.nn.functional as F
-from typing import List, Union
+from typing import List
 from transformers import AutoTokenizer, AutoModel
 
 from ..core import EmbeddingProvider
@@ -54,54 +54,42 @@ class LocalQwen3Provider(EmbeddingProvider):
         return f'Instruct: {instruction}\nQuery: {query}'
     
     @torch.no_grad()
-    def encode(
-        self, 
-        texts: Union[str, List[str]], 
-        is_query: bool = False,
-        normalize: bool = True
-    ) -> torch.Tensor:
-        """Encode texts to embeddings tensor"""
-        if isinstance(texts, str):
-            texts = [texts]
-        
-        if not texts:
-            return torch.empty(0, self.embedding_dim, device=self.config.torch_device)
-        
-        # Format queries with instruction, documents without
-        if is_query:
-            formatted_texts = [self._format_query(text) for text in texts]
-        else:
-            formatted_texts = texts
-        
+    def encode_single(
+        self,
+        text: str,
+        is_query: bool = False
+    ) -> List[float]:
+        """Encode single text to embedding vector with L2 normalization"""
+        # Format query with instruction if needed
+        formatted_text = self._format_query(text) if is_query else text
+
         # Tokenize
         batch_dict = self.tokenizer(
-            formatted_texts,
+            [formatted_text],
             padding=True,
             truncation=True,
             max_length=self.config.max_length,
             return_tensors="pt"
         )
         batch_dict = {k: v.to(self.config.torch_device) for k, v in batch_dict.items()}
-        
+
         # Get embeddings
         outputs = self.model(**batch_dict)
         embeddings = self._last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
-        
-        # Normalize if requested
-        if normalize:
-            embeddings = F.normalize(embeddings, p=2, dim=1)
-        
-        return embeddings
-    
-    def encode_batch(
-        self,
-        texts: List[str],
-        is_query: bool = False,
-        normalize: bool = True
-    ) -> List[List[float]]:
-        """Encode batch of texts to list of embeddings"""
-        embeddings = self.encode(texts, is_query=is_query, normalize=normalize)
-        return embeddings.cpu().tolist()
+
+        # Clean up intermediate tensors to free GPU memory
+        del batch_dict, outputs
+
+        # Always normalize embeddings for consistency with API
+        embeddings = F.normalize(embeddings, p=2, dim=1)
+
+        # Convert to list and return single embedding
+        result = embeddings.cpu().tolist()[0]
+        del embeddings
+        torch.cuda.empty_cache()
+
+        return result
+
     
     @property
     def embedding_dim(self) -> int:

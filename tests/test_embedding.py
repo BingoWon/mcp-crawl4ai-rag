@@ -19,10 +19,11 @@ def test_local_provider():
     embedding = provider.encode_single("Hello world")
     assert len(embedding) == 2560
 
-    # Test batch encoding
-    embeddings = provider.encode_batch(["Hello", "World"])
-    assert len(embeddings) == 2
-    assert len(embeddings[0]) == 2560
+    # Test multiple single encodings
+    embedding1 = provider.encode_single("Hello")
+    embedding2 = provider.encode_single("World")
+    assert len(embedding1) == 2560
+    assert len(embedding2) == 2560
 
     print("✅ Local provider tests passed")
     return provider
@@ -42,10 +43,11 @@ def test_api_provider():
     embedding = provider.encode_single("Hello world")
     assert len(embedding) == 2560
 
-    # Test batch encoding
-    embeddings = provider.encode_batch(["Hello", "World"])
-    assert len(embeddings) == 2
-    assert len(embeddings[0]) == 2560
+    # Test multiple single encodings
+    embedding1 = provider.encode_single("Hello")
+    embedding2 = provider.encode_single("World")
+    assert len(embedding1) == 2560
+    assert len(embedding2) == 2560
 
     print("✅ API provider tests passed")
     return provider
