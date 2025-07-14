@@ -1,114 +1,134 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Database Viewer</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
     <div class="container">
-        <!-- 头部 -->
-        <header class="header">
-            <h1>Database Viewer</h1>
-            <div class="stats">
-                <span id="pages-count">Pages: 0</span>
-                <span id="chunks-count">Chunks: 0</span>
-                <span id="last-update">Last Update: --</span>
+      <!-- 头部 -->
+      <header class="header">
+        <h1>Database Viewer</h1>
+        <div class="stats">
+          <span id="pages-count">Pages: 0</span>
+          <span id="chunks-count">Chunks: 0</span>
+          <span id="last-update">Last Update: --</span>
+        </div>
+      </header>
+
+      <!-- 主内容区 -->
+      <main class="main">
+        <!-- 左侧 Pages -->
+        <section class="panel left-panel">
+          <div class="panel-header">
+            <h2>Pages</h2>
+            <div class="panel-stats">
+              <div class="stat-item" id="pages-total-count">总数: 0</div>
+              <div class="stat-item" id="pages-content-count">
+                有内容: 0 (0%)
+              </div>
+              <div class="stat-item" id="pages-avg-crawl">平均爬取: 0</div>
             </div>
-        </header>
+          </div>
+          <div class="panel-content">
+            <div id="pages-error" class="error" style="display: none"></div>
+            <div
+              id="pages-table"
+              class="table-container virtual-scroll-container"
+            >
+              <table class="virtual-header-table">
+                <thead>
+                  <tr>
+                    <th class="row-number-header">序号</th>
+                    <th>URL</th>
+                    <th>Content</th>
+                    <th>Crawl Count</th>
+                    <th>Created</th>
+                    <th>Updated</th>
+                  </tr>
+                </thead>
+              </table>
+              <div id="pages-spacer" class="virtual-spacer"></div>
+              <table class="virtual-table">
+                <tbody id="pages-tbody" class="virtual-tbody"></tbody>
+              </table>
+            </div>
+            <div id="pages-empty" class="empty" style="display: none">
+              No pages data
+            </div>
+          </div>
+        </section>
 
-        <!-- 主内容区 -->
-        <main class="main">
-            <!-- 左侧 Pages -->
-            <section class="panel left-panel">
-                <div class="panel-header">
-                    <h2>Pages</h2>
-                    <div class="panel-count" id="pages-panel-count">0</div>
-                </div>
-                <div class="panel-content">
-                    <div id="pages-error" class="error" style="display: none;"></div>
-                    <div id="pages-table" class="table-container virtual-scroll-container">
-                        <div id="pages-spacer" class="virtual-spacer"></div>
-                        <table class="virtual-table">
-                            <thead>
-                                <tr>
-                                    <th>URL</th>
-                                    <th>Content</th>
-                                    <th>Crawl Count</th>
-                                    <th>Created</th>
-                                    <th>Updated</th>
-                                </tr>
-                            </thead>
-                            <tbody id="pages-tbody" class="virtual-tbody">
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="pages-empty" class="empty" style="display: none;">
-                        No pages data
-                    </div>
-                </div>
-            </section>
-
-            <!-- 右侧 Chunks -->
-            <section class="panel right-panel">
-                <div class="panel-header">
-                    <h2>Chunks</h2>
-                    <div class="panel-count" id="chunks-panel-count">0</div>
-                </div>
-                <div class="panel-content">
-                    <div id="chunks-error" class="error" style="display: none;"></div>
-                    <div id="chunks-table" class="table-container virtual-scroll-container">
-                        <div id="chunks-spacer" class="virtual-spacer"></div>
-                        <table class="virtual-table">
-                            <thead>
-                                <tr>
-                                    <th>URL</th>
-                                    <th>Content</th>
-                                    <th>Embedding</th>
-                                    <th>Created</th>
-                                </tr>
-                            </thead>
-                            <tbody id="chunks-tbody" class="virtual-tbody">
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="chunks-empty" class="empty" style="display: none;">
-                        No chunks data
-                    </div>
-                </div>
-            </section>
-        </main>
+        <!-- 右侧 Chunks -->
+        <section class="panel right-panel">
+          <div class="panel-header">
+            <h2>Chunks</h2>
+            <div class="panel-count" id="chunks-panel-count">0</div>
+          </div>
+          <div class="panel-content">
+            <div id="chunks-error" class="error" style="display: none"></div>
+            <div
+              id="chunks-table"
+              class="table-container virtual-scroll-container"
+            >
+              <table class="virtual-header-table">
+                <thead>
+                  <tr>
+                    <th class="row-number-header">序号</th>
+                    <th>URL</th>
+                    <th>Content</th>
+                    <th>Embedding</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+              </table>
+              <div id="chunks-spacer" class="virtual-spacer"></div>
+              <table class="virtual-table">
+                <tbody id="chunks-tbody" class="virtual-tbody"></tbody>
+              </table>
+            </div>
+            <div id="chunks-empty" class="empty" style="display: none">
+              No chunks data
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
 
     <!-- 内容详情模态框 -->
-    <div id="content-modal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modal-title">内容详情</h3>
-                <span class="close" onclick="closeModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="modal-section">
-                    <h4>URL:</h4>
-                    <p id="modal-url" class="url-text"></p>
-                </div>
-                <div class="modal-section">
-                    <h4>完整内容:</h4>
-                    <div id="modal-content" class="content-text"></div>
-                </div>
-                <div class="modal-section" id="modal-embedding-section" style="display: none;">
-                    <h4>Embedding信息:</h4>
-                    <p id="modal-embedding-info"></p>
-                    <details>
-                        <summary>查看原始向量数据</summary>
-                        <pre id="modal-embedding-raw" class="embedding-raw"></pre>
-                    </details>
-                </div>
-            </div>
+    <div id="content-modal" class="modal" style="display: none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modal-title">内容详情</h3>
+          <span class="close" onclick="closeModal()">&times;</span>
         </div>
+        <div class="modal-body">
+          <div class="modal-section">
+            <h4>URL:</h4>
+            <p id="modal-url" class="url-text"></p>
+          </div>
+          <div class="modal-section">
+            <h4>完整内容:</h4>
+            <div id="modal-content" class="content-text"></div>
+          </div>
+          <div
+            class="modal-section"
+            id="modal-embedding-section"
+            style="display: none"
+          >
+            <h4>Embedding信息:</h4>
+            <p id="modal-embedding-info"></p>
+            <details>
+              <summary>查看原始向量数据</summary>
+              <pre id="modal-embedding-raw" class="embedding-raw"></pre>
+            </details>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="script.js"></script>
-</body>
+  </body>
 </html>

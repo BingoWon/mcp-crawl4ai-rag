@@ -9,12 +9,44 @@ class DatabaseViewer {
       chunks: null,
       stats: null,
     };
+
+    // 虚拟滚动配置
+    this.virtualScroll = {
+      rowHeight: 40,
+      bufferRows: 5,
+      pages: { data: [], container: null, spacer: null, tbody: null },
+      chunks: { data: [], container: null, spacer: null, tbody: null },
+    };
+
     this.init();
   }
 
   init() {
+    this.initVirtualScroll();
     this.loadData();
     this.startAutoRefresh();
+  }
+
+  initVirtualScroll() {
+    // 初始化pages虚拟滚动
+    this.virtualScroll.pages.container = document.getElementById("pages-table");
+    this.virtualScroll.pages.spacer = document.getElementById("pages-spacer");
+    this.virtualScroll.pages.tbody = document.getElementById("pages-tbody");
+
+    // 初始化chunks虚拟滚动
+    this.virtualScroll.chunks.container =
+      document.getElementById("chunks-table");
+    this.virtualScroll.chunks.spacer = document.getElementById("chunks-spacer");
+    this.virtualScroll.chunks.tbody = document.getElementById("chunks-tbody");
+
+    // 绑定滚动事件
+    this.virtualScroll.pages.container.addEventListener("scroll", () => {
+      this.renderVirtualRows("pages");
+    });
+
+    this.virtualScroll.chunks.container.addEventListener("scroll", () => {
+      this.renderVirtualRows("chunks");
+    });
   }
 
   async loadData() {
@@ -40,7 +72,7 @@ class DatabaseViewer {
             this.showTable("pages");
           }
         }
-        this.updatePanelCount("pages", result.count);
+        this.updatePanelCount("pages", result.count, result.data);
       } else {
         this.showError("pages", result.error);
       }
@@ -91,6 +123,10 @@ class DatabaseViewer {
             "chunks-count"
           ).textContent = `Chunks: ${result.data.chunks_count}`;
           this.lastData.stats = result.data;
+
+          // 更新panel count显示
+          this.updatePanelCount("pages", result.data.pages_count);
+          this.updatePanelCount("chunks", result.data.chunks_count);
         }
       }
     } catch (error) {
@@ -99,68 +135,39 @@ class DatabaseViewer {
   }
 
   renderPages(pages) {
-    const tbody = document.getElementById("pages-tbody");
-
     if (pages.length === 0) {
       this.showEmpty("pages");
       return;
     }
 
-    tbody.innerHTML = pages
-      .map(
-        (page) => `
-            <tr>
-                <td title="${
-                  page.full_url || page.url
-                }" onclick="showContentModal('${
-          page.id
-        }', '${this.escapeJsString(
-          page.full_url || page.url
-        )}', '${this.escapeJsString(page.full_content)}', 'page')">${
-          page.url
-        }</td>
-                <td title="${page.content}">${page.content}</td>
-                <td><span class="crawl-count">${page.crawl_count}</span></td>
-                <td>${this.formatDate(page.created_at)}</td>
-                <td>${this.formatDate(page.updated_at)}</td>
-            </tr>
-        `
-      )
-      .join("");
+    // 设置虚拟滚动数据
+    this.virtualScroll.pages.data = pages;
+
+    // 设置撑高元素高度
+    const totalHeight = pages.length * this.virtualScroll.rowHeight;
+    this.virtualScroll.pages.spacer.style.height = `${totalHeight}px`;
+
+    // 初始渲染
+    this.renderVirtualRows("pages");
 
     this.showTable("pages");
   }
 
   renderChunks(chunks) {
-    const tbody = document.getElementById("chunks-tbody");
-
     if (chunks.length === 0) {
       this.showEmpty("chunks");
       return;
     }
 
-    tbody.innerHTML = chunks
-      .map(
-        (chunk) => `
-            <tr>
-                <td title="${
-                  chunk.full_url || chunk.url
-                }" onclick="showContentModal('${
-          chunk.id
-        }', '${this.escapeJsString(
-          chunk.full_url || chunk.url
-        )}', '${this.escapeJsString(
-          chunk.full_content
-        )}', 'chunk', '${this.escapeJsString(
-          chunk.embedding_info
-        )}', '${this.escapeJsString(chunk.raw_embedding)}')">${chunk.url}</td>
-                <td title="${chunk.content}">${chunk.content}</td>
-                <td class="embedding-info">${chunk.embedding_info}</td>
-                <td>${this.formatDate(chunk.created_at)}</td>
-            </tr>
-        `
-      )
-      .join("");
+    // 设置虚拟滚动数据
+    this.virtualScroll.chunks.data = chunks;
+
+    // 设置撑高元素高度
+    const totalHeight = chunks.length * this.virtualScroll.rowHeight;
+    this.virtualScroll.chunks.spacer.style.height = `${totalHeight}px`;
+
+    // 初始渲染
+    this.renderVirtualRows("chunks");
 
     this.showTable("chunks");
   }
@@ -184,8 +191,26 @@ class DatabaseViewer {
     document.getElementById(`${type}-empty`).style.display = "flex";
   }
 
-  updatePanelCount(type, count) {
-    document.getElementById(`${type}-panel-count`).textContent = count;
+  updatePanelCount(type, count, data = null) {
+    if (type === "pages" && this.lastData.stats) {
+      // 分别更新三个独立的统计区域
+      const stats = this.lastData.stats;
+      document.getElementById(
+        "pages-total-count"
+      ).textContent = `总数: ${count}`;
+      document.getElementById(
+        "pages-content-count"
+      ).textContent = `有内容: ${stats.pages_with_content} (${stats.content_percentage}%)`;
+      document.getElementById(
+        "pages-avg-crawl"
+      ).textContent = `平均爬取: ${stats.avg_crawl_count}`;
+    } else if (type === "chunks") {
+      // chunks保持原有显示方式
+      const panelCountElement = document.getElementById(`${type}-panel-count`);
+      if (panelCountElement) {
+        panelCountElement.textContent = count;
+      }
+    }
   }
 
   updateLastUpdateTime() {
@@ -223,6 +248,78 @@ class DatabaseViewer {
       .replace(/\n/g, "\\n") // 转义换行符
       .replace(/\r/g, "\\r") // 转义回车符
       .replace(/\t/g, "\\t"); // 转义制表符
+  }
+
+  // 虚拟滚动核心方法
+  renderVirtualRows(type) {
+    const vs = this.virtualScroll[type];
+    if (!vs.data.length) return;
+
+    const viewportHeight = vs.container.clientHeight;
+    const scrollTop = vs.container.scrollTop;
+
+    let startIndex = Math.floor(scrollTop / this.virtualScroll.rowHeight);
+    let endIndex =
+      startIndex + Math.ceil(viewportHeight / this.virtualScroll.rowHeight);
+
+    startIndex = Math.max(0, startIndex - this.virtualScroll.bufferRows);
+    endIndex = Math.min(
+      vs.data.length,
+      endIndex + this.virtualScroll.bufferRows
+    );
+
+    const visibleItems = vs.data.slice(startIndex, endIndex);
+
+    // 渲染可见行
+    vs.tbody.innerHTML = visibleItems
+      .map((item, index) => {
+        return type === "pages"
+          ? this.createPageRow(item, startIndex + index)
+          : this.createChunkRow(item, startIndex + index);
+      })
+      .join("");
+
+    // 设置偏移（考虑表头高度）
+    const headerHeight = vs.container.querySelector(
+      ".virtual-header-table"
+    ).offsetHeight;
+    const offset = headerHeight + startIndex * this.virtualScroll.rowHeight;
+    vs.tbody.parentElement.style.transform = `translateY(${offset}px)`;
+  }
+
+  createPageRow(page, index) {
+    return `
+      <tr>
+        <td class="row-number">${index + 1}</td>
+        <td class="url-cell" title="${page.full_url || page.url}"
+            onclick="showContentModal('${page.id}', '${this.escapeJsString(
+      page.full_url || page.url
+    )}', '${this.escapeJsString(page.full_content)}', 'page')">${page.url}</td>
+        <td class="content-cell" title="${page.content}">${page.content}</td>
+        <td><span class="crawl-count">${page.crawl_count}</span></td>
+        <td>${this.formatDate(page.created_at)}</td>
+        <td>${this.formatDate(page.updated_at)}</td>
+      </tr>
+    `;
+  }
+
+  createChunkRow(chunk, index) {
+    return `
+      <tr>
+        <td class="row-number">${index + 1}</td>
+        <td class="url-cell" title="${chunk.full_url || chunk.url}"
+            onclick="showContentModal('${chunk.id}', '${this.escapeJsString(
+      chunk.full_url || chunk.url
+    )}', '${this.escapeJsString(
+      chunk.full_content
+    )}', 'chunk', '${this.escapeJsString(
+      chunk.embedding_info
+    )}', '${this.escapeJsString(chunk.raw_embedding)}')">${chunk.url}</td>
+        <td class="content-cell" title="${chunk.content}">${chunk.content}</td>
+        <td class="embedding-info">${chunk.embedding_info}</td>
+        <td>${this.formatDate(chunk.created_at)}</td>
+      </tr>
+    `;
   }
 
   startAutoRefresh() {
