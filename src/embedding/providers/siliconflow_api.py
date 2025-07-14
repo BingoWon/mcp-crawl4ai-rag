@@ -28,7 +28,9 @@ class SiliconFlowProvider(EmbeddingProvider):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         })
-        print(f"✅ SiliconFlow API provider initialized with {self.config.model_name}")
+        from utils.logger import setup_logger
+        logger = setup_logger(__name__)
+        logger.info(f"✅ SiliconFlow API provider initialized with {self.config.model_name}")
     
     def encode_single(
         self,

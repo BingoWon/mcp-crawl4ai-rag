@@ -28,10 +28,14 @@ class PostgreSQLClient:
             self.pool = await asyncpg.create_pool(**self.config.to_dict())
             await self._setup_database()
             self._initialized = True
-            print(f"✅ PostgreSQL client initialized: {self.config.host}:{self.config.port}/{self.config.database}")
-            
+            from utils.logger import setup_logger
+            logger = setup_logger(__name__)
+            logger.info(f"✅ PostgreSQL client initialized: {self.config.host}:{self.config.port}/{self.config.database}")
+
         except Exception as e:
-            print(f"❌ Failed to initialize PostgreSQL client: {e}")
+            from utils.logger import setup_logger
+            logger = setup_logger(__name__)
+            logger.error(f"❌ Failed to initialize PostgreSQL client: {e}")
             raise
     
     async def close(self) -> None:

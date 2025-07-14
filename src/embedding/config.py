@@ -24,9 +24,9 @@ class EmbeddingConfig:
     embedding_dim: int = int(os.getenv("EMBEDDING_DIM", "2560"))
     max_length: int = int(os.getenv("EMBEDDING_MAX_LENGTH", "8192"))
 
-    # Device configuration (hardcoded)
-    device: str = "auto"
-    dtype: str = "auto"
+    # Apple Silicon MPS configuration (hardcoded)
+    device: str = "mps"
+    dtype: str = "float32"
 
     # Performance configuration
     normalize_embeddings: bool = True
@@ -36,35 +36,17 @@ class EmbeddingConfig:
     api_timeout: int = int(os.getenv("SILICONFLOW_TIMEOUT", "30"))
     
     def __post_init__(self):
-        """Validate and optimize configuration"""
-        if self.device == "auto":
-            self.device = self._auto_detect_device()
-        
-        if self.dtype == "auto":
-            self.dtype = self._auto_detect_dtype()
-    
-    def _auto_detect_device(self) -> str:
-        """Auto-detect optimal device"""
-        if torch.cuda.is_available():
-            return "cuda"
-        elif torch.backends.mps.is_available():
-            return "mps"
-        return "cpu"
-    
-    def _auto_detect_dtype(self) -> str:
-        """Auto-detect optimal dtype based on device"""
-        if self.device == "cuda":
-            return "float16"
-        return "float32"
+        """Apple Silicon optimized configuration"""
+        pass
     
     @classmethod
     def for_local(cls) -> "EmbeddingConfig":
-        """Create configuration optimized for local inference"""
+        """Create Apple Silicon optimized local configuration"""
         return cls(provider="local")
-    
+
     @classmethod
     def for_api(cls) -> "EmbeddingConfig":
-        """Create configuration optimized for API usage"""
+        """Create API configuration"""
         return cls(provider="api")
     
     @property
@@ -74,12 +56,5 @@ class EmbeddingConfig:
     
     @property
     def torch_dtype(self) -> torch.dtype:
-        """Get torch dtype object"""
-        if self.dtype == "float16":
-            return torch.float16
-        elif self.dtype == "float32":
-            return torch.float32
-        elif self.dtype == "bfloat16":
-            return torch.bfloat16
-        else:
-            return torch.float32
+        """Get Apple Silicon optimized torch dtype"""
+        return torch.float32

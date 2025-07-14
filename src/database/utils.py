@@ -76,7 +76,9 @@ async def check_database_connection() -> bool:
         await client.fetch_val("SELECT 1")
         return True
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
+        from utils.logger import setup_logger
+        logger = setup_logger(__name__)
+        logger.error(f"❌ Database connection failed: {e}")
         return False
 
 
@@ -94,7 +96,9 @@ async def get_database_stats() -> dict:
             'total_records': chunks_count
         }
     except Exception as e:
-        print(f"❌ Failed to get database stats: {e}")
+        from utils.logger import setup_logger
+        logger = setup_logger(__name__)
+        logger.error(f"❌ Failed to get database stats: {e}")
         return {}
 
 

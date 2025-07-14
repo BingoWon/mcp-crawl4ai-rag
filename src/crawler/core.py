@@ -68,13 +68,10 @@ class IndependentCrawler:
             await self.crawler.close()
         logger.info("Cleanup completed")
 
-    def log_gpu_memory(self, context: str = ""):
-        """Log current GPU memory usage for optimization monitoring"""
-        if torch.cuda.is_available():
-            allocated = torch.cuda.memory_allocated() / 1024**3
-            cached = torch.cuda.memory_reserved() / 1024**3
-            logger.info(f"GPU Memory {context}: {allocated:.2f}GB allocated, {cached:.2f}GB cached")
-
+    def log_mps_memory(self, context: str = ""):
+        """Log Apple Silicon MPS memory usage"""
+        allocated = torch.mps.current_allocated_memory() / 1024**3
+        logger.info(f"MPS Memory {context}: {allocated:.2f}GB allocated")
 
 
     def clean_and_normalize_url(self, url: str) -> str:
@@ -180,7 +177,7 @@ class IndependentCrawler:
             logger.warning(f"No chunks generated for {url}")
             return
 
-        self.log_gpu_memory("before embedding")
+        self.log_mps_memory("before embedding")
 
         data_to_insert = []
         for chunk in chunks:
@@ -191,7 +188,7 @@ class IndependentCrawler:
                 "embedding": str(embedding)
             })
 
-        self.log_gpu_memory("after embedding")
+        self.log_mps_memory("after embedding")
         await self.db_operations.insert_chunks(data_to_insert)
 
         # 5. Discover and store new links
