@@ -166,12 +166,7 @@ th {
   font-size: 0.8rem;
 }
 
-.row-number-header {
-  width: 60px;
-  text-align: center !important;
-  min-width: 60px;
-  max-width: 60px;
-}
+
 
 td {
   padding: 0.5rem 0.75rem;
@@ -185,17 +180,7 @@ tr:hover {
   background: #f8f9fa;
 }
 
-/* 序号列样式 */
-.row-number {
-  width: 60px;
-  text-align: center;
-  font-weight: 600;
-  color: #6c757d;
-  font-size: 0.75rem;
-  min-width: 60px;
-  max-width: 60px;
-  background: #f8f9fa;
-}
+
 
 /* URL列样式 - 可点击 */
 .url-cell {
