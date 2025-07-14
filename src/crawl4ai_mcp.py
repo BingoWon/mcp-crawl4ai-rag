@@ -22,7 +22,7 @@ import os
 
 from local_reranker import create_reranker
 
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 # Import embedding functions
 from embedding import create_embedding
 
@@ -53,7 +53,7 @@ class Crawl4AIContext:
     reranking_model: Optional[Any] = None
 
 @asynccontextmanager
-async def crawl4ai_lifespan(_server: FastMCP) -> AsyncIterator[Crawl4AIContext]:
+async def crawl4ai_lifespan(server: FastMCP) -> AsyncIterator[Crawl4AIContext]:
     """
     Manages the Crawl4AI client lifecycle.
     
@@ -327,29 +327,6 @@ async def crawl_markdown_file(crawler: AsyncWebCrawler, url: str) -> List[Dict[s
     else:
         logger.error(f"Failed to crawl {url}: {result.error_message}")
         return []
-
-async def crawl_batch(crawler: AsyncWebCrawler, urls: List[str], max_concurrent: int = 10) -> List[Dict[str, Any]]:
-    """
-    Batch crawl multiple URLs in parallel.
-    
-    Args:
-        crawler: AsyncWebCrawler instance
-        urls: List of URLs to crawl
-        max_concurrent: Maximum number of concurrent browser sessions
-        
-    Returns:
-        List of dictionaries with URL and markdown content
-    """
-    crawl_config = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, stream=False)
-    dispatcher = MemoryAdaptiveDispatcher(
-        memory_threshold_percent=70.0,
-        check_interval=1.0,
-        max_session_permit=max_concurrent
-    )
-
-    results = await crawler.arun_many(urls=urls, config=crawl_config, dispatcher=dispatcher)
-    return [{'url': r.url, 'markdown': r.markdown} for r in results if r.success and r.markdown]
-
 
 
 async def main():

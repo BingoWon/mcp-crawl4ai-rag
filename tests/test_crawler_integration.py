@@ -66,8 +66,8 @@ This is the second section with more specific information."""
     print("✅ 单页面分块存储测试通过\n")
 
 
-async def test_batch_processing():
-    """测试批量处理功能"""
+async def test_streaming_processing():
+    """测试流式处理功能"""
     print("🧪 测试批量处理功能...")
     
     # 模拟批量爬取结果
@@ -100,13 +100,23 @@ Section C content."""
     ]
     
     async with IndependentCrawler() as crawler:
-        # 测试批量处理
-        result = await crawler._process_and_store_batch(crawl_results, "test_batch")
-        
-        print(f"批量处理结果: {result}")
-        assert result["success"], "批量处理应该成功"
-        assert result["total_pages"] == 2, "应该处理2个页面"
-        assert result["total_chunks"] == 3, "应该生成3个chunks (page1: 1个, page2: 2个)"
+        # 测试流式处理
+        total_pages = 0
+        total_chunks = 0
+
+        for crawl_result in crawl_results:
+            result = await crawler._process_and_store_content(
+                crawl_result['url'],
+                crawl_result['markdown']
+            )
+
+            if result["success"]:
+                total_pages += 1
+                total_chunks += result["chunks_stored"]
+
+        print(f"流式处理结果: {total_pages} pages, {total_chunks} chunks")
+        assert total_pages == 2, "应该处理2个页面"
+        assert total_chunks == 3, "应该生成3个chunks (page1: 1个, page2: 2个)"
         
         # 验证数据库中的数据
         async with PostgreSQLClient() as client:
@@ -174,7 +184,7 @@ async def main():
     
     try:
         await test_single_page_chunking()
-        await test_batch_processing() 
+        await test_streaming_processing()
         await test_embedding_generation()
         
         print("🎉 所有集成测试通过！")
