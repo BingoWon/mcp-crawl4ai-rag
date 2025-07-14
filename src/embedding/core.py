@@ -7,55 +7,32 @@ Unified embedding interfaces and factory system.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Union, Optional
-import torch
+from typing import List, Optional
 
 from .config import EmbeddingConfig
 
 
 class EmbeddingProvider(ABC):
     """Abstract base class for all embedding providers"""
-    
+
     def __init__(self, config: EmbeddingConfig):
         self.config = config
-    
+
     @abstractmethod
-    def encode(
-        self, 
-        texts: Union[str, List[str]], 
-        is_query: bool = False,
-        normalize: bool = True
-    ) -> torch.Tensor:
-        """
-        Encode texts to embeddings
-        
-        Args:
-            texts: Text(s) to encode
-            is_query: Whether texts are queries (vs documents)
-            normalize: Whether to L2 normalize embeddings
-            
-        Returns:
-            Embeddings tensor [batch_size, embedding_dim]
-        """
-        pass
-    
-    @abstractmethod
-    def encode_batch(
+    def encode_single(
         self,
-        texts: List[str],
-        is_query: bool = False,
-        normalize: bool = True
-    ) -> List[List[float]]:
+        text: str,
+        is_query: bool = False
+    ) -> List[float]:
         """
-        Encode batch of texts to list of embeddings
-        
+        Encode single text to embedding with L2 normalization
+
         Args:
-            texts: List of texts to encode
-            is_query: Whether texts are queries (vs documents)
-            normalize: Whether to L2 normalize embeddings
-            
+            text: Text to encode
+            is_query: Whether text is a query (vs document)
+
         Returns:
-            List of embedding vectors
+            L2 normalized embedding vector as list of floats
         """
         pass
     
@@ -64,29 +41,12 @@ class EmbeddingProvider(ABC):
     def embedding_dim(self) -> int:
         """Get embedding dimension"""
         pass
-    
+
     @property
     @abstractmethod
     def model_name(self) -> str:
         """Get model name"""
         pass
-    
-    def encode_single(self, text: str, is_query: bool = False) -> List[float]:
-        """Encode single text to embedding vector"""
-        result = self.encode_batch([text], is_query=is_query)
-        return result[0]
-    
-    def encode_queries(self, queries: List[str]) -> List[List[float]]:
-        """Convenience method for encoding queries"""
-        return self.encode_batch(queries, is_query=True)
-    
-    def encode_documents(self, documents: List[str]) -> List[List[float]]:
-        """Convenience method for encoding documents"""
-        return self.encode_batch(documents, is_query=False)
-    
-    def similarity(self, embeddings1: torch.Tensor, embeddings2: torch.Tensor) -> torch.Tensor:
-        """Compute cosine similarity between embeddings"""
-        return torch.mm(embeddings1, embeddings2.transpose(0, 1))
 
 
 # Global embedding provider instance
@@ -119,19 +79,19 @@ def get_embedder(config: Optional[EmbeddingConfig] = None) -> EmbeddingProvider:
     return _global_embedder
 
 
-def create_embeddings_batch(texts: List[str], is_query: bool = False) -> List[List[float]]:
+def create_embedding(text: str, is_query: bool = False) -> List[float]:
     """
-    Convenience function for batch embedding generation
-    
+    Create L2 normalized embedding for single text
+
     Args:
-        texts: List of texts to encode
-        is_query: Whether texts are queries
-        
+        text: Text to encode
+        is_query: Whether text is a query
+
     Returns:
-        List of embedding vectors
+        L2 normalized embedding vector as list of floats
     """
     embedder = get_embedder()
-    return embedder.encode_batch(texts, is_query=is_query)
+    return embedder.encode_single(text, is_query=is_query)
 
 
 def reset_embedder() -> None:

@@ -2,10 +2,11 @@
 Embedding Configuration
 嵌入配置
 
-Unified configuration management with hardcoded defaults.
-统一配置管理，硬编码默认值。
+Configuration management from environment variables.
+从环境变量读取配置管理。
 """
 
+import os
 from dataclasses import dataclass
 from typing import Literal
 import torch
@@ -13,27 +14,26 @@ import torch
 
 @dataclass
 class EmbeddingConfig:
-    """Unified embedding configuration with hardcoded optimal defaults"""
-    
+    """Embedding configuration from environment variables"""
+
     # Provider selection
-    provider: Literal["local", "api"] = "local"
-    
+    provider: Literal["local", "api"] = os.getenv("EMBEDDING_MODE", "local")
+
     # Model configuration
-    model_name: str = "Qwen/Qwen3-Embedding-4B"
-    embedding_dim: int = 2560
-    max_length: int = 8192
-    
-    # Device configuration
+    model_name: str = os.getenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-4B")
+    embedding_dim: int = int(os.getenv("EMBEDDING_DIM", "2560"))
+    max_length: int = int(os.getenv("EMBEDDING_MAX_LENGTH", "8192"))
+
+    # Device configuration (hardcoded)
     device: str = "auto"
     dtype: str = "auto"
-    
+
     # Performance configuration
-    batch_size: int = 32
     normalize_embeddings: bool = True
-    
+
     # API configuration (for SiliconFlow)
     api_base_url: str = "https://api.siliconflow.cn/v1/embeddings"
-    api_timeout: int = 30
+    api_timeout: int = int(os.getenv("SILICONFLOW_TIMEOUT", "30"))
     
     def __post_init__(self):
         """Validate and optimize configuration"""

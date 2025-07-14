@@ -24,7 +24,7 @@ from local_reranker import create_reranker
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, MemoryAdaptiveDispatcher
 # Import embedding functions
-from embedding import create_embeddings_batch
+from embedding import create_embedding
 
 from database import get_database_client as get_postgres_client, DatabaseOperations
 from utils.logger import setup_logger
@@ -139,10 +139,6 @@ def rerank_results(model: Any, query: str, results: List[Dict[str, Any]], conten
         return results
 
 # Search functions moved from utils.py
-def create_embedding(text: str) -> List[float]:
-    """Create an embedding for a single text using Qwen3-Embedding-4B."""
-    embeddings = create_embeddings_batch([text])
-    return embeddings[0] if embeddings else [0.0] * 2560
 
 async def _search_documents_async(
     client,

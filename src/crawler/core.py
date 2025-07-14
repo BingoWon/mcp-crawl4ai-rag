@@ -15,13 +15,15 @@ from crawl4ai import AsyncWebCrawler
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from embedding import create_embeddings_batch
+from embedding import create_embedding
 from database import get_database_client, DatabaseOperations
 from chunking import SmartChunker
 
 # Import Apple extractor (always available)
 from .apple_content_extractor import AppleContentExtractor
 from utils.logger import setup_logger
+
+import torch
 
 logger = setup_logger(__name__)
 
@@ -70,6 +72,13 @@ class IndependentCrawler:
         if self.crawler:
             await self.crawler.close()
         logger.info("Cleanup completed")
+
+    def log_gpu_memory(self, context: str = ""):
+        """Log current GPU memory usage for optimization monitoring"""
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1024**3
+            cached = torch.cuda.memory_reserved() / 1024**3
+            logger.info(f"GPU Memory {context}: {allocated:.2f}GB allocated, {cached:.2f}GB cached")
 
     async def _preload_crawled_urls(self) -> None:
         """预加载所有已爬取的URL到内存集合"""
@@ -156,17 +165,21 @@ class IndependentCrawler:
                 "error": "No content to store after chunking"
             }
 
-        # Generate embeddings for each chunk
-        embeddings = create_embeddings_batch(chunks)
+        # GPU内存监控：embedding前
+        self.log_gpu_memory("before embedding")
 
-        # Store each chunk separately with original URL
+        # Generate embeddings for each chunk individually
         data_to_insert = []
-        for chunk, embedding in zip(chunks, embeddings):
+        for chunk in chunks:
+            embedding = create_embedding(chunk)
             data_to_insert.append({
                 "url": url,
                 "content": chunk,
                 "embedding": str(embedding)
             })
+
+        # GPU内存监控：embedding后
+        self.log_gpu_memory("after embedding")
 
         await self.db_operations.insert_chunks(data_to_insert)
 
@@ -219,17 +232,21 @@ class IndependentCrawler:
                 "error": "No content to store after processing"
             }
 
-        # Generate embeddings for all chunks in one batch
-        embeddings = create_embeddings_batch(all_chunks)
+        # GPU内存监控：embedding前
+        self.log_gpu_memory(f"before embedding ({len(all_chunks)} chunks)")
 
-        # Prepare data for insertion
+        # Generate embeddings for each chunk individually
         data_to_insert = []
-        for url, chunk, embedding in zip(chunk_urls, all_chunks, embeddings):
+        for url, chunk in zip(chunk_urls, all_chunks):
+            embedding = create_embedding(chunk)
             data_to_insert.append({
                 "url": url,
                 "content": chunk,
                 "embedding": str(embedding)
             })
+
+        # GPU内存监控：embedding后
+        self.log_gpu_memory(f"after embedding ({len(all_chunks)} chunks)")
 
         await self.db_operations.insert_chunks(data_to_insert)
 
