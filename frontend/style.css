@@ -79,10 +79,28 @@ body {
 .panel-count {
   background: #007bff;
   color: white;
-  padding: 0.2rem 0.6rem;
+  padding: 0.3rem 0.8rem;
   border-radius: 0.8rem;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 500;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.panel-stats {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.stat-item {
+  background: #007bff;
+  color: white;
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .panel-content {
@@ -101,6 +119,15 @@ body {
   position: relative;
 }
 
+.virtual-header-table {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #f8f9fa;
+  width: 100%;
+  border-collapse: collapse;
+}
+
 .virtual-spacer {
   width: 100%;
   /* 高度由JS动态设置 */
@@ -111,6 +138,7 @@ body {
   top: 0;
   left: 0;
   width: 100%;
+  border-collapse: collapse;
 }
 
 .virtual-tbody {
@@ -138,6 +166,13 @@ th {
   font-size: 0.8rem;
 }
 
+.row-number-header {
+  width: 60px;
+  text-align: center !important;
+  min-width: 60px;
+  max-width: 60px;
+}
+
 td {
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid #f1f3f4;
@@ -150,8 +185,20 @@ tr:hover {
   background: #f8f9fa;
 }
 
+/* 序号列样式 */
+.row-number {
+  width: 60px;
+  text-align: center;
+  font-weight: 600;
+  color: #6c757d;
+  font-size: 0.75rem;
+  min-width: 60px;
+  max-width: 60px;
+  background: #f8f9fa;
+}
+
 /* URL列样式 - 可点击 */
-td:first-child {
+.url-cell {
   font-family: "Monaco", "Menlo", monospace;
   color: #007bff;
   max-width: 180px;
@@ -163,13 +210,13 @@ td:first-child {
   text-decoration: underline;
 }
 
-td:first-child:hover {
+.url-cell:hover {
   color: #0056b3;
   background: #e3f2fd;
 }
 
 /* Content列样式 */
-td:nth-child(2) {
+.content-cell {
   max-width: 250px;
   overflow: hidden;
   text-overflow: ellipsis;

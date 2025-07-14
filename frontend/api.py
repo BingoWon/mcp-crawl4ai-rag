@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
@@ -130,22 +131,47 @@ async def get_stats() -> JSONResponse:
     """获取统计信息"""
     try:
         async with PostgreSQLClient() as client:
-            # 获取pages统计
+            # 获取pages基础统计
             pages_count = await client.execute_query("SELECT COUNT(*) as count FROM pages")
             chunks_count = await client.execute_query("SELECT COUNT(*) as count FROM chunks")
-            
+
+            # 获取有content的pages统计
+            pages_with_content = await client.execute_query("""
+                SELECT COUNT(*) as count FROM pages
+                WHERE content IS NOT NULL AND content != ''
+            """)
+
+            # 获取平均crawl count
+            avg_crawl_count = await client.execute_query("""
+                SELECT AVG(crawl_count) as avg_count FROM pages
+            """)
+
+            total_pages = pages_count[0]["count"]
+            content_pages = pages_with_content[0]["count"]
+            content_percentage = (content_pages / total_pages * 100) if total_pages > 0 else 0
+            avg_crawl = float(avg_crawl_count[0]["avg_count"]) if avg_crawl_count[0]["avg_count"] else 0
+
             return JSONResponse({
                 "success": True,
                 "data": {
-                    "pages_count": pages_count[0]["count"],
-                    "chunks_count": chunks_count[0]["count"]
+                    "pages_count": total_pages,
+                    "chunks_count": chunks_count[0]["count"],
+                    "pages_with_content": content_pages,
+                    "content_percentage": round(content_percentage, 1),
+                    "avg_crawl_count": round(avg_crawl, 2)
                 }
             })
     except Exception as e:
         return JSONResponse({
             "success": False,
             "error": str(e),
-            "data": {"pages_count": 0, "chunks_count": 0}
+            "data": {
+                "pages_count": 0,
+                "chunks_count": 0,
+                "pages_with_content": 0,
+                "content_percentage": 0,
+                "avg_crawl_count": 0
+            }
         }, status_code=500)
 
 
