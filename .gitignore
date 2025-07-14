@@ -10,3 +10,5 @@ test/output/*
 tests/output/*
 *.log
 *.md
+*.txt
+*.json

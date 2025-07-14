@@ -28,8 +28,9 @@
                 </div>
                 <div class="panel-content">
                     <div id="pages-error" class="error" style="display: none;"></div>
-                    <div id="pages-table" class="table-container">
-                        <table>
+                    <div id="pages-table" class="table-container virtual-scroll-container">
+                        <div id="pages-spacer" class="virtual-spacer"></div>
+                        <table class="virtual-table">
                             <thead>
                                 <tr>
                                     <th>URL</th>
@@ -39,7 +40,7 @@
                                     <th>Updated</th>
                                 </tr>
                             </thead>
-                            <tbody id="pages-tbody">
+                            <tbody id="pages-tbody" class="virtual-tbody">
                             </tbody>
                         </table>
                     </div>
@@ -57,8 +58,9 @@
                 </div>
                 <div class="panel-content">
                     <div id="chunks-error" class="error" style="display: none;"></div>
-                    <div id="chunks-table" class="table-container">
-                        <table>
+                    <div id="chunks-table" class="table-container virtual-scroll-container">
+                        <div id="chunks-spacer" class="virtual-spacer"></div>
+                        <table class="virtual-table">
                             <thead>
                                 <tr>
                                     <th>URL</th>
@@ -67,7 +69,7 @@
                                     <th>Created</th>
                                 </tr>
                             </thead>
-                            <tbody id="chunks-tbody">
+                            <tbody id="chunks-tbody" class="virtual-tbody">
                             </tbody>
                         </table>
                     </div>

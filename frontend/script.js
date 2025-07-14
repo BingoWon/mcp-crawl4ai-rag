@@ -110,9 +110,13 @@ class DatabaseViewer {
       .map(
         (page) => `
             <tr>
-                <td title="${page.url}" onclick="showContentModal('${
+                <td title="${
+                  page.full_url || page.url
+                }" onclick="showContentModal('${
           page.id
-        }', '${page.url}', '${this.escapeHtml(page.full_content)}', 'page')">${
+        }', '${this.escapeJsString(
+          page.full_url || page.url
+        )}', '${this.escapeJsString(page.full_content)}', 'page')">${
           page.url
         }</td>
                 <td title="${page.content}">${page.content}</td>
@@ -139,13 +143,17 @@ class DatabaseViewer {
       .map(
         (chunk) => `
             <tr>
-                <td title="${chunk.url}" onclick="showContentModal('${
+                <td title="${
+                  chunk.full_url || chunk.url
+                }" onclick="showContentModal('${
           chunk.id
-        }', '${chunk.url}', '${this.escapeHtml(
+        }', '${this.escapeJsString(
+          chunk.full_url || chunk.url
+        )}', '${this.escapeJsString(
           chunk.full_content
-        )}', 'chunk', '${this.escapeHtml(
+        )}', 'chunk', '${this.escapeJsString(
           chunk.embedding_info
-        )}', '${this.escapeHtml(chunk.raw_embedding)}')">${chunk.url}</td>
+        )}', '${this.escapeJsString(chunk.raw_embedding)}')">${chunk.url}</td>
                 <td title="${chunk.content}">${chunk.content}</td>
                 <td class="embedding-info">${chunk.embedding_info}</td>
                 <td>${this.formatDate(chunk.created_at)}</td>
@@ -204,6 +212,17 @@ class DatabaseViewer {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  escapeJsString(text) {
+    if (!text) return "";
+    return text
+      .replace(/\\/g, "\\\\") // 转义反斜杠
+      .replace(/'/g, "\\'") // 转义单引号
+      .replace(/"/g, '\\"') // 转义双引号
+      .replace(/\n/g, "\\n") // 转义换行符
+      .replace(/\r/g, "\\r") // 转义回车符
+      .replace(/\t/g, "\\t"); // 转义制表符
   }
 
   startAutoRefresh() {
