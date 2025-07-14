@@ -34,6 +34,7 @@
                                 <tr>
                                     <th>URL</th>
                                     <th>Content</th>
+                                    <th>Crawl Count</th>
                                     <th>Created</th>
                                     <th>Updated</th>
                                 </tr>
@@ -76,6 +77,34 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- 内容详情模态框 -->
+    <div id="content-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">内容详情</h3>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section">
+                    <h4>URL:</h4>
+                    <p id="modal-url" class="url-text"></p>
+                </div>
+                <div class="modal-section">
+                    <h4>完整内容:</h4>
+                    <div id="modal-content" class="content-text"></div>
+                </div>
+                <div class="modal-section" id="modal-embedding-section" style="display: none;">
+                    <h4>Embedding信息:</h4>
+                    <p id="modal-embedding-info"></p>
+                    <details>
+                        <summary>查看原始向量数据</summary>
+                        <pre id="modal-embedding-raw" class="embedding-raw"></pre>
+                    </details>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="script.js"></script>

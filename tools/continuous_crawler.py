@@ -10,7 +10,6 @@ Uses existing .env configuration (MAX_DEPTH, etc.)
 使用现有的.env配置（MAX_DEPTH等）
 """
 
-import os
 import sys
 import asyncio
 from pathlib import Path
@@ -32,38 +31,19 @@ logger = setup_logger(__name__)
 # Hyperparameter: Starting URL for crawling
 TARGET_URL = "https://developer.apple.com/documentation/"
 
-# Global configuration from .env
-MAX_DEPTH = int(os.getenv('MAX_DEPTH', '2'))
-
 
 async def main():
-    """Continuous Apple documentation crawler"""
-    logger.info("🚀 Continuous Crawler Starting")
-    logger.info(f"Target: {TARGET_URL} | Depth: {MAX_DEPTH}")
+    """Continuous Apple documentation crawler with database-driven priority"""
+    logger.info("🚀 Database-Driven Continuous Crawler Starting")
+    logger.info(f"Target: {TARGET_URL}")
 
-    crawl_count = 0
-    while True:
-        try:
-            crawl_count += 1
-            logger.info(f"=== Crawl #{crawl_count} ===")
-
-            async with IndependentCrawler() as crawler:
-                result = await crawler.smart_crawl_url(TARGET_URL)
-
-            if result.get("success") and result.get("total_pages", 0) > 0:
-                logger.info(f"✅ {result['total_pages']} pages, {result['total_chunks']} chunks")
-            elif result.get("success"):
-                logger.info("✅ No new pages found, crawling complete")
-                break
-            else:
-                logger.warning(f"❌ Crawl failed: {result.get('error', 'Unknown')}")
-
-        except KeyboardInterrupt:
-            logger.info("Crawler interrupted by user")
-            break
-        except Exception as e:
-            logger.error(f"Error: {e}")
-            await asyncio.sleep(60)
+    try:
+        async with IndependentCrawler() as crawler:
+            await crawler.start_infinite_crawl(TARGET_URL)
+    except KeyboardInterrupt:
+        logger.info("Crawler interrupted by user")
+    except Exception as e:
+        logger.error(f"Crawler error: {e}")
 
 
 if __name__ == "__main__":

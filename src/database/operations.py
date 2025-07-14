@@ -6,7 +6,7 @@ High-level database operations for crawled content and RAG functionality.
 爬取内容和RAG功能的高级数据库操作。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from .client import PostgreSQLClient
 
 
@@ -68,31 +68,40 @@ class DatabaseOperations:
             ORDER BY created_at DESC
         """)
 
-    async def upsert_page(self, url: str, content: str) -> None:
-        """Insert or update page information"""
-        await self.client.execute_query("""
-            INSERT INTO pages (url, content)
-            VALUES ($1, $2)
-            ON CONFLICT (url)
-            DO UPDATE SET
-                content = EXCLUDED.content,
-                updated_at = NOW()
-        """, url, content)
-    
-    async def url_exists(self, url: str) -> bool:
-        """Check if URL already exists in crawled_pages"""
-        result = await self.client.fetch_val(
-            "SELECT EXISTS(SELECT 1 FROM crawled_pages WHERE url = $1)",
-            url
-        )
-        return result
+    async def insert_url_if_not_exists(self, url: str) -> bool:
+        """Insert URL with crawl_count=0 if not exists. Returns True if inserted."""
+        result = await self.client.execute_command("""
+            INSERT INTO pages (url, crawl_count, content)
+            VALUES ($1, 0, '')
+            ON CONFLICT (url) DO NOTHING
+        """, url)
+        return "INSERT 0 1" in result
 
-    async def get_all_crawled_urls(self) -> List[str]:
-        """Get all unique URLs from crawled_pages"""
-        result = await self.client.execute_query(
-            "SELECT DISTINCT url FROM crawled_pages ORDER BY url"
+    async def get_next_crawl_url(self) -> Optional[str]:
+        """Get URL with minimum crawl_count for next crawl"""
+        result = await self.client.fetch_one("""
+            SELECT url FROM pages
+            WHERE crawl_count = (SELECT MIN(crawl_count) FROM pages)
+            ORDER BY created_at ASC
+            LIMIT 1
+        """)
+        return result['url'] if result else None
+
+    async def update_page_after_crawl(self, url: str, content: str) -> None:
+        """Update page content and increment crawl_count"""
+        await self.client.execute_command("""
+            UPDATE pages
+            SET content = $2,
+                crawl_count = crawl_count + 1,
+                updated_at = NOW()
+            WHERE url = $1
+        """, url, content)
+
+    async def delete_chunks_by_url(self, url: str) -> None:
+        """Delete all chunks for a specific URL"""
+        await self.client.execute_command(
+            "DELETE FROM chunks WHERE url = $1", url
         )
-        return [row['url'] for row in result]
     
     # ============================================================================
     # CODE EXAMPLES OPERATIONS

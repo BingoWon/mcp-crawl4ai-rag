@@ -6,7 +6,6 @@ Complete standalone crawling functionality with no MCP dependencies.
 完全独立的爬虫功能，无MCP依赖。
 """
 
-import os
 from typing import List, Dict, Any, Optional
 
 from crawl4ai import AsyncWebCrawler
@@ -40,7 +39,6 @@ class IndependentCrawler:
         self.db_client = None
         self.db_operations = None
         self.chunker = SmartChunker()
-        self.crawled_urls: set = set()  # 内存中的已爬取URL集合
         
     async def __aenter__(self):
         """Async context manager entry"""
@@ -61,9 +59,6 @@ class IndependentCrawler:
         # Initialize crawler
         self.crawler = AsyncWebCrawler(verbose=False)
         await self.crawler.start()
-
-        # 预加载已爬取的URL到内存
-        await self._preload_crawled_urls()
         logger.info("Crawler initialization completed")
 
     async def cleanup(self) -> None:
@@ -80,12 +75,7 @@ class IndependentCrawler:
             cached = torch.cuda.memory_reserved() / 1024**3
             logger.info(f"GPU Memory {context}: {allocated:.2f}GB allocated, {cached:.2f}GB cached")
 
-    async def _preload_crawled_urls(self) -> None:
-        """预加载所有已爬取的URL到内存集合"""
-        logger.info("Preloading crawled URLs from database")
-        crawled_urls = await self.db_operations.get_all_chunk_urls()
-        self.crawled_urls = set(url_record['url'] for url_record in crawled_urls)
-        logger.info(f"Preloaded {len(self.crawled_urls)} crawled URLs")
+
 
     def clean_and_normalize_url(self, url: str) -> str:
         """清洗和标准化URL - 移除锚点片段和末尾斜杠"""
@@ -126,49 +116,67 @@ class IndependentCrawler:
             logger.error(f"Apple link extraction error for {url}: {e}")
             return []
 
-    async def smart_crawl_url(self, url: str) -> Dict[str, Any]:
-        """Apple文档专用爬取 - 流式实时处理"""
+    async def start_infinite_crawl(self, start_url: str) -> None:
+        """Start infinite crawl loop based on crawl_count priority"""
         if not self.crawler or not self.db_operations:
             raise RuntimeError("Crawler not initialized. Use async with statement.")
 
-        if not url.startswith(self.APPLE_DOCS_URL_PREFIX):
-            return {"success": False, "url": url, "error": "Only Apple documentation URLs are supported"}
+        if not start_url.startswith(self.APPLE_DOCS_URL_PREFIX):
+            logger.error("Only Apple documentation URLs are supported")
+            return
 
-        logger.info(f"Starting streaming crawl for URL: {url}")
-        try:
-            # 流式递归爬取：每个页面立即处理，不等待批量
-            stats = await self._crawl_recursive_streaming([url], int(os.getenv('MAX_DEPTH', '3')))
+        # Insert start URL if not exists
+        await self.db_operations.insert_url_if_not_exists(start_url)
+        logger.info(f"Starting infinite crawl from: {start_url}")
 
-            logger.info(f"Streaming crawl completed for URL: {url}")
-            return {
-                "success": True,
-                "crawl_type": "apple_streaming",
-                "total_pages": stats["pages_processed"],
-                "total_chunks": stats["chunks_stored"]
-            }
+        crawl_count = 0
+        while True:
+            try:
+                # Get next URL to crawl (minimum crawl_count)
+                next_url = await self.db_operations.get_next_crawl_url()
+                if not next_url:
+                    logger.info("No URLs to crawl")
+                    break
 
-        except Exception as e:
-            logger.error(f"Crawl failed for URL {url}: {e}")
-            return {"success": False, "url": url, "error": str(e)}
+                crawl_count += 1
+                logger.info(f"=== Crawl #{crawl_count}: {next_url} ===")
 
-    async def _process_and_store_content(self, url: str, markdown: str) -> Dict[str, Any]:
-        """Process and store single page content"""
-        # Store page information first
-        await self.db_operations.upsert_page(url, markdown)
+                # Crawl and process the URL
+                await self._crawl_and_process_url(next_url)
 
-        chunks = self.chunker.chunk_text_simple(markdown)
+            except KeyboardInterrupt:
+                logger.info("Crawl interrupted by user")
+                break
+            except Exception as e:
+                logger.error(f"Crawl error: {e}")
+                continue
 
+    async def _crawl_and_process_url(self, url: str) -> None:
+        """Crawl single URL and complete processing pipeline"""
+        logger.info(f"Processing URL: {url}")
+
+        # 1. Crawl content
+        apple_results = await self.crawl_apple_documentation(url)
+        if not apple_results:
+            logger.warning(f"No content crawled for {url}")
+            return
+
+        content = apple_results[0]['markdown']
+
+        # 2. Delete old chunks for this URL
+        await self.db_operations.delete_chunks_by_url(url)
+
+        # 3. Update page content and crawl_count
+        await self.db_operations.update_page_after_crawl(url, content)
+
+        # 4. Process content: chunking + embedding + storage
+        chunks = self.chunker.chunk_text_simple(content)
         if not chunks:
-            return {
-                "success": False,
-                "url": url,
-                "error": "No content to store after chunking"
-            }
+            logger.warning(f"No chunks generated for {url}")
+            return
 
-        # GPU内存监控：embedding前
         self.log_gpu_memory("before embedding")
 
-        # Generate embeddings for each chunk individually
         data_to_insert = []
         for chunk in chunks:
             embedding = create_embedding(chunk)
@@ -178,73 +186,28 @@ class IndependentCrawler:
                 "embedding": str(embedding)
             })
 
-        # GPU内存监控：embedding后
         self.log_gpu_memory("after embedding")
-
         await self.db_operations.insert_chunks(data_to_insert)
 
-        return {
-            "success": True,
-            "url": url,
-            "chunks_stored": len(chunks),
-            "total_characters": len(markdown)
-        }
+        # 5. Discover and store new links
+        links = await self._extract_apple_links(url)
+        await self._store_discovered_links(links)
 
-    async def _crawl_recursive_streaming(self, start_urls: List[str], max_depth: int) -> Dict[str, int]:
-        """流式递归爬取：每个页面立即处理，不等待批量"""
-        if not self.crawler:
-            return {"pages_processed": 0, "chunks_stored": 0}
+        logger.info(f"✅ Processed {url}: {len(chunks)} chunks, {len(links)} new links")
 
-        logger.info(f"Starting streaming recursive crawl: {len(start_urls)} URLs, max depth: {max_depth}")
+    async def _store_discovered_links(self, links: List[str]) -> None:
+        """Store discovered links to database if not exists"""
+        new_count = 0
+        for link in links:
+            clean_link = self.clean_and_normalize_url(link)
+            if clean_link.startswith(self.APPLE_DOCS_URL_PREFIX):
+                if await self.db_operations.insert_url_if_not_exists(clean_link):
+                    new_count += 1
 
-        # 统计信息
-        total_pages_processed = 0
-        total_chunks_stored = 0
-        current_urls = start_urls
+        if new_count > 0:
+            logger.info(f"Added {new_count} new URLs to crawl queue")
 
-        for depth in range(max_depth):
-            if not current_urls:
-                break
 
-            logger.info(f"Depth {depth + 1}: Processing {len(current_urls)} URLs")
-
-            next_level_urls = set()
-            depth_pages_processed = 0
-
-            for i, url in enumerate(current_urls, 1):
-                # 添加到内存中的已爬取URL集合
-                self.crawled_urls.add(url)
-
-                # 爬取页面内容
-                apple_results = await self.crawl_apple_documentation(url)
-
-                if apple_results:
-                    # 立即处理每个页面：chunk + embed + store
-                    for result in apple_results:
-                        process_result = await self._process_and_store_content(
-                            result['url'],
-                            result['markdown']
-                        )
-
-                        if process_result["success"]:
-                            total_pages_processed += 1
-                            total_chunks_stored += process_result["chunks_stored"]
-                            depth_pages_processed += 1
-                            logger.info(f"✅ Processed {result['url']}: {process_result['chunks_stored']} chunks stored")
-                        else:
-                            logger.warning(f"❌ Failed to process {result['url']}: {process_result.get('error', 'Unknown error')}")
-
-                # 发现新链接（用于下一层递归）
-                links = await self._extract_apple_links(url)
-                self._add_apple_links_to_queue(links, next_level_urls)
-
-                logger.info(f"Depth {depth + 1}: Completed {i}/{len(current_urls)} URLs")
-
-            current_urls = list(next_level_urls)
-            logger.info(f"Depth {depth + 1} completed: {depth_pages_processed} pages processed, {len(next_level_urls)} new URLs discovered")
-
-        logger.info(f"Streaming crawl completed: {total_pages_processed} pages, {total_chunks_stored} chunks")
-        return {"pages_processed": total_pages_processed, "chunks_stored": total_chunks_stored}
 
     def _extract_links_from_data(self, links_data) -> List[str]:
         """Extract all internal links from crawl results"""
@@ -259,20 +222,4 @@ class IndependentCrawler:
         logger.info(f"Extracted {len(extracted_links)} internal links")
         return list(set(extracted_links))  # Remove duplicates
 
-    def _add_apple_links_to_queue(self, links: List[str], next_level_urls: set):
-        """添加Apple文档链接到下一级爬取队列 - 严格过滤和清洗"""
-        initial_count = len(next_level_urls)
-        for link in links:
-            # 先清洗和标准化URL
-            cleaned_link = self.clean_and_normalize_url(link)
 
-            # 严格检查是否为Apple文档URL
-            if not cleaned_link.startswith(self.APPLE_DOCS_URL_PREFIX):
-                continue
-
-            # 避免重复爬取
-            if cleaned_link not in self.crawled_urls:
-                next_level_urls.add(cleaned_link)
-
-        added_count = len(next_level_urls) - initial_count
-        logger.info(f"Added {added_count} new Apple links to queue")
