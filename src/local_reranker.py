@@ -8,6 +8,9 @@ import torch
 import torch.nn.functional as F
 from typing import List, Tuple
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class Qwen3Reranker:
@@ -17,26 +20,18 @@ class Qwen3Reranker:
     """
 
     def __init__(self):
-        # 写死所有参数，优化为 4B 模型
+        # Apple Silicon MPS 优化配置
         self.model_path = "Qwen/Qwen3-Reranker-4B"
-        self.device = self._auto_device()
-        self.dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+        self.device = torch.device("mps")
+        self.dtype = torch.float32
         self.max_length = 8192
 
         self._load_model()
         self._setup_tokens()
 
-    def _auto_device(self) -> torch.device:
-        """Auto-detect optimal device."""
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            return torch.device("mps")
-        return torch.device("cpu")
-
     def _load_model(self) -> None:
-        """Load tokenizer and model with optimal settings."""
-        print(f"🚀 Loading Qwen3-Reranker-4B on {self.device}...")
+        """Load tokenizer and model with Apple Silicon MPS optimization."""
+        logger.info(f"🚀 Loading {self.model_path} on Apple Silicon MPS...")
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_path,
@@ -51,7 +46,7 @@ class Qwen3Reranker:
             trust_remote_code=True
         ).eval().to(self.device)
 
-        print(f"✅ Qwen3-Reranker-4B loaded successfully on {self.device}")
+        logger.info(f"✅ {self.model_path} loaded successfully on Apple Silicon MPS")
 
     def _setup_tokens(self) -> None:
         """Setup token IDs and prompt templates."""
@@ -66,7 +61,7 @@ class Qwen3Reranker:
         self.prefix_tokens = self.tokenizer.encode(prefix, add_special_tokens=False)
         self.suffix_tokens = self.tokenizer.encode(suffix, add_special_tokens=False)
 
-        print(f"📋 Token setup: yes={self.token_true_id}, no={self.token_false_id}")
+        logger.info(f"📋 Token setup: yes={self.token_true_id}, no={self.token_false_id}")
     
     @staticmethod
     def _format_input(instruction: str, query: str, document: str) -> str:
@@ -226,7 +221,7 @@ def create_reranker() -> 'Qwen3Reranker':
     try:
         return Qwen3Reranker()
     except Exception as e:
-        print(f"❌ Qwen3-Reranker-4B unavailable: {e}")
+        logger.error(f"❌ Qwen3-Reranker-4B unavailable: {e}")
         raise RuntimeError("Qwen3-Reranker-4B not available")
 
 

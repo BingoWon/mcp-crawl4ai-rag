@@ -81,7 +81,7 @@ async def crawl4ai_lifespan(server: FastMCP) -> AsyncIterator[Crawl4AIContext]:
     reranking_model = None
     if os.getenv("USE_RERANKING", "false") == "true":
         reranking_model = create_reranker()
-        print("✅ Reranker initialized successfully")
+        logger.info("✅ Reranker initialized successfully")
     
 
     

@@ -13,6 +13,9 @@ from transformers import AutoTokenizer, AutoModel
 
 from ..core import EmbeddingProvider
 from ..config import EmbeddingConfig
+from utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class LocalQwen3Provider(EmbeddingProvider):
@@ -23,11 +26,11 @@ class LocalQwen3Provider(EmbeddingProvider):
         self.model = None
         self.tokenizer = None
         self._load_model()
-        print(f"✅ Qwen3-Embedding-4B loaded on {config.device}")
+        logger.info(f"✅ {self.config.model_name} loaded on Apple Silicon MPS")
     
     def _load_model(self) -> None:
         """Load Qwen3-Embedding model with optimal settings"""
-        print(f"🚀 Loading {self.config.model_name} on {self.config.device}...")
+        logger.info(f"🚀 Loading {self.config.model_name} on Apple Silicon MPS...")
         
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model_name,
@@ -77,7 +80,7 @@ class LocalQwen3Provider(EmbeddingProvider):
         outputs = self.model(**batch_dict)
         embeddings = self._last_token_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
 
-        # Clean up intermediate tensors to free GPU memory
+        # Clean up intermediate tensors to free MPS memory
         del batch_dict, outputs
 
         # Always normalize embeddings for consistency with API
@@ -86,7 +89,6 @@ class LocalQwen3Provider(EmbeddingProvider):
         # Convert to list and return single embedding
         result = embeddings.cpu().tolist()[0]
         del embeddings
-        torch.cuda.empty_cache()
 
         return result
 
