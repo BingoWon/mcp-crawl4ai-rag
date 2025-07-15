@@ -31,17 +31,19 @@ async def test_database_operations():
         inserted_again = await db_ops.insert_url_if_not_exists(test_url)
         print(f"重复插入URL: {inserted_again}")
         
-        # 获取下一个爬取URL
-        next_url = await db_ops.get_next_crawl_url()
-        print(f"下一个爬取URL: {next_url}")
-        
+        # 获取下一个爬取URL和内容
+        result = await db_ops.get_next_crawl_url()
+        url, content = result if result else (None, None)
+        print(f"下一个爬取URL: {url}, 内容: {content}")
+
         # 更新页面内容
         await db_ops.update_page_after_crawl(test_url, "测试内容")
         print("更新页面内容完成")
-        
+
         # 再次获取下一个URL（crawl_count应该增加了）
-        next_url_after = await db_ops.get_next_crawl_url()
-        print(f"更新后的下一个URL: {next_url_after}")
+        result_after = await db_ops.get_next_crawl_url()
+        url_after, content_after = result_after if result_after else (None, None)
+        print(f"更新后的下一个URL: {url_after}, 内容: {content_after}")
         
         # 查看pages表数据
         pages = await client.execute_query("SELECT url, crawl_count, content FROM pages")

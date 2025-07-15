@@ -4,21 +4,44 @@ Independent Crawler Core
 
 Complete standalone crawling functionality with no MCP dependencies.
 完全独立的爬虫功能，无MCP依赖。
+
+=== 智能链接发现设计 ===
+
+本模块实现了基于内容状态的智能链接发现策略，提高爬取效率：
+
+**核心优化：基于内容状态的链接发现决策**
+- 传统方式：无条件发现和存储新链接，浪费资源
+- 优化方式：仅在页面有内容时才发现新链接
+- 实现方法：_crawl_and_process_url(url, has_existing_content) 根据 has_existing_content 决定是否执行链接发现
+
+**设计原理：**
+1. 爬取优先级基于 crawl_count：优先爬取 crawl_count 最小的页面
+2. 如果最小 crawl_count 的页面已有内容，说明所有页面都已爬取过
+3. 此时需要发现新链接以扩展爬取范围
+4. 如果最小 crawl_count 的页面没有内容，说明还有未完成的爬取任务
+5. 此时应优先完成现有页面的爬取，而非发现新链接
+
+**实现逻辑：**
+- 从 get_next_crawl_url() 获取 (url, content)
+- 根据 content 是否为空设置 has_existing_content 标志
+- 在 _crawl_and_process_url 中根据 has_existing_content 决定是否执行链接发现
+- 添加明确的日志记录，说明链接发现的决策原因
+
+**性能收益：**
+- 减少不必要的链接提取操作
+- 避免在空内容页面上执行无意义的操作
+- 优化爬取策略，提高系统整体效率
+- 减少数据库负载和网络请求
 """
 
 from typing import List, Dict, Any, Optional
-
 from crawl4ai import AsyncWebCrawler
-
-# Import modules with unified style
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from embedding import create_embedding
 from database import get_database_client, DatabaseOperations
 from chunking import SmartChunker
-
-# Import Apple extractor (always available)
 from .apple_content_extractor import AppleContentExtractor
 from utils.logger import setup_logger
 
@@ -129,17 +152,18 @@ class IndependentCrawler:
         crawl_count = 0
         while True:
             try:
-                # Get next URL to crawl (minimum crawl_count)
-                next_url = await self.db_operations.get_next_crawl_url()
-                if not next_url:
+                # Get next URL and content to crawl (minimum crawl_count)
+                result = await self.db_operations.get_next_crawl_url()
+                if not result:
                     logger.info("No URLs to crawl")
                     break
 
+                next_url, existing_content = result
                 crawl_count += 1
                 logger.info(f"=== Crawl #{crawl_count}: {next_url} ===")
 
                 # Crawl and process the URL
-                await self._crawl_and_process_url(next_url)
+                await self._crawl_and_process_url(next_url, bool(existing_content))
 
             except KeyboardInterrupt:
                 logger.info("Crawl interrupted by user")
@@ -148,7 +172,7 @@ class IndependentCrawler:
                 logger.error(f"Crawl error: {e}")
                 continue
 
-    async def _crawl_and_process_url(self, url: str) -> None:
+    async def _crawl_and_process_url(self, url: str, has_existing_content: bool) -> None:
         """Crawl single URL and complete processing pipeline"""
         logger.info(f"Processing URL: {url}")
 
@@ -192,9 +216,14 @@ class IndependentCrawler:
         self.log_mps_memory("after embedding")
         await self.db_operations.insert_chunks(data_to_insert)
 
-        # 5. Discover and store new links
-        links = await self._extract_apple_links(url)
-        await self._store_discovered_links(links)
+        # 5. Discover and store new links only if all pages have content
+        links = []
+        if has_existing_content:
+            logger.info("All pages have content, discovering new links")
+            links = await self._extract_apple_links(url)
+            await self._store_discovered_links(links)
+        else:
+            logger.info("Skipping link discovery as some pages may still have no content")
 
         logger.info(f"✅ Processed {url}: {len(chunks)} chunks, {len(links)} new links")
 
