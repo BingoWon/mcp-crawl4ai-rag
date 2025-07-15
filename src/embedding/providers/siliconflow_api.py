@@ -37,7 +37,7 @@ class SiliconFlowProvider(EmbeddingProvider):
         text: str,
         is_query: bool = False
     ) -> List[float]:
-        """Encode single text to embedding vector via API with L2 normalization"""
+        """Encode single text to embedding vector via API (already normalized)"""
         try:
             response = self.session.post(
                 self.config.api_base_url,
@@ -50,11 +50,7 @@ class SiliconFlowProvider(EmbeddingProvider):
             response.raise_for_status()
             embedding = response.json()["data"][0]["embedding"]
 
-            # Always normalize embeddings for consistency
-            import math
-            norm = math.sqrt(sum(x * x for x in embedding))
-            embedding = [x / norm for x in embedding]
-
+            # API already returns normalized embeddings, no need to normalize again
             return embedding
         except Exception as e:
             raise RuntimeError(f"SiliconFlow API error: {e}")
