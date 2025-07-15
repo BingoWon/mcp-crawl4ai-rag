@@ -80,7 +80,7 @@ Specifies a handler to call when an account is removed from the store.
 """
     
     chunker = SmartChunker()
-    chunks = chunker.chunk_text_simple(apple_doc)
+    chunks = chunker.chunk_text(apple_doc)
     
     print(f"分块结果: {len(chunks)} 个块")
     print()
@@ -101,16 +101,7 @@ Specifies a handler to call when an account is removed from the store.
         print(f"内容预览: {chunk}")
         print()
     
-    # 验证预期结果
-    expected_sections = [
-        "Choose a playback approach",
-        "Configure video player to play immersive media", 
-        "Size video for the shared space",
-        "Customize playback controls",
-        "Preserve motion comfort"
-    ]
-    
-    # assert len(chunks) == len(expected_sections), f"应该有{len(expected_sections)}个块，实际有{len(chunks)}个"
+
     
     # 验证每个块都包含完整结构
     for chunk in chunks:

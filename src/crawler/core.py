@@ -172,7 +172,7 @@ class IndependentCrawler:
             return
 
         # 4. Process content: chunking + embedding + storage
-        chunks = self.chunker.chunk_text_simple(content)
+        chunks = self.chunker.chunk_text(content)
         if not chunks:
             logger.warning(f"No chunks generated for {url}")
             return
@@ -180,7 +180,8 @@ class IndependentCrawler:
         self.log_mps_memory("before embedding")
 
         data_to_insert = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
+            logger.info(f"Processing {i+1}/{len(chunks)} chunk")
             embedding = create_embedding(chunk)
             data_to_insert.append({
                 "url": url,

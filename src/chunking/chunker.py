@@ -1,4 +1,44 @@
-"""Apple文档专用双井号分块实现"""
+"""
+Apple文档专用智能分块实现
+
+=== CHUNKING 策略详细说明 ===
+
+本模块实现三层优先级的智能分块策略，专门针对Apple开发者文档的结构特点设计：
+
+【第一优先级：H2分割】
+- 触发条件：存在除 "## Overview" 外的其他 ## 标题
+- 处理逻辑：
+  1. title_part: 文档开头到第一个 ## 之前的内容
+  2. overview: 通过 _extract_overview_for_h2() 提取，到下一个 ## 停止
+  3. h2_sections: 除 Overview 外的所有 ## 章节
+  4. 最终chunks: 每个chunk = title_part + overview + 单个h2_section
+
+【第二优先级：H3分割】
+- 触发条件：文档长度 > 5000字符 且 没有其他H2标题（通常只有 ## Overview）
+- 处理逻辑：
+  1. title_part: 文档开头到第一个 ## 之前的内容
+  2. overview: 通过 _extract_overview_for_h3() 提取，到第一个 ### 停止
+  3. h3_sections: 所有 ### 章节（包括 Overview 内的 ###）
+  4. 最终chunks: 每个chunk = title_part + overview + 单个h3_section
+
+【第三优先级：完整内容】
+- 触发条件：短文档（≤5000字符）或无有效标题结构
+- 处理逻辑：返回完整文档内容作为单个chunk
+
+=== 关键设计原则 ===
+
+1. 语义完整性：每个chunk都包含完整的上下文（背景+概述+具体内容）
+2. 结构化分割：优先按文档的层次结构进行分割
+3. 自适应策略：根据文档特点自动选择最适合的分割方式
+4. 内容无丢失：确保所有内容都被正确处理，无遗漏
+
+=== Overview 处理差异 ===
+
+- H2分割时：Overview 包含到下一个 ## 之前的所有内容（可能包含 ### 内容）
+- H3分割时：Overview 只包含到第一个 ### 之前的纯概述内容
+- 这种差异确保了不同分割策略下的语义一致性
+
+"""
 
 from typing import List
 from utils.logger import setup_logger
@@ -19,56 +59,73 @@ class SmartChunker:
         if not text:
             return []
 
+        # 提取文档标题部分（到第一个 ## 之前）
         title_part = self._extract_title_part(text)
-        overview = self._extract_overview(text)
 
-        # 第一优先级：检查是否有除Overview外的##标题
+        # 第一优先级：H2分割 - 检查是否有除Overview外的其他##标题
         h2_sections = self._split_h2_sections(text)
         if h2_sections:
+            # H2分割时：Overview 包含到下一个 ## 之前的所有内容
+            overview = self._extract_overview_for_h2(text)
             chunks = self._build_chunks_from_sections(title_part, overview, h2_sections)
             logger.info(f"##标题分块完成: {len(chunks)} chunks")
             return chunks
 
-        # 第二/三优先级：基于内容长度决策
-        content_length = len(text)
-        if content_length > 5000:
-            # 长内容：尝试###标题分割
+        # 第二优先级：H3分割 - 长文档且无其他H2标题时使用
+        if len(text) > 5000:
             h3_sections = self._split_h3_sections(text)
             if h3_sections:
+                # H3分割时：Overview 只包含到第一个 ### 之前的纯概述内容
+                overview = self._extract_overview_for_h3(text)
                 chunks = self._build_chunks_from_sections(title_part, overview, h3_sections)
                 logger.info(f"###标题分块完成: {len(chunks)} chunks (长内容)")
                 return chunks
 
-        # 短内容或无有效标题：返回完整内容
+        # 第三优先级：完整内容 - 短文档或无有效标题结构
         chunk = text.strip()
-        logger.info(f"完整内容分块: 1 chunk ({'短内容' if content_length <= 5000 else '无有效标题'})")
+        logger.info(f"完整内容分块: 1 chunk ({'短内容' if len(text) <= 5000 else '无有效标题'})")
         return [chunk]
 
-    def chunk_text_simple(self, text: str) -> List[str]:
-        """简单分块接口，只返回文本内容"""
-        return self.chunk_text(text)
+
 
     def _extract_title_part(self, text: str) -> str:
         """提取标题部分：从文档开始到第一个##章节"""
         lines = text.split('\n')
 
         for i, line in enumerate(lines):
-            if line.startswith('## '):
+            if line.startswith('## '):  # 遇到第一个H2标题时停止
                 return '\n'.join(lines[:i])
 
-        return text
+        return text  # 如果没有H2标题，返回整个文档
 
-    def _extract_overview(self, text: str) -> str:
-        """提取Overview章节内容，如果不存在则返回空字符串"""
+    def _extract_overview_for_h2(self, text: str) -> str:
+        """H2分割时的Overview提取：到下一个##停止"""
         lines = text.split('\n')
         overview_lines = []
         in_overview = False
 
         for line in lines:
-            if line.strip() == '## Overview':
+            if line.strip() == '## Overview':  # 找到Overview开始
                 in_overview = True
                 overview_lines.append(line)
-            elif in_overview and line.startswith('## '):
+            elif in_overview and line.startswith('## '):  # 遇到下一个H2时停止
+                break
+            elif in_overview:
+                overview_lines.append(line)
+
+        return '\n'.join(overview_lines) if overview_lines else ""
+
+    def _extract_overview_for_h3(self, text: str) -> str:
+        """H3分割时的Overview提取：到###停止或文档末尾"""
+        lines = text.split('\n')
+        overview_lines = []
+        in_overview = False
+
+        for line in lines:
+            if line.strip() == '## Overview':  # 找到Overview开始
+                in_overview = True
+                overview_lines.append(line)
+            elif in_overview and line.startswith('### '):  # 遇到第一个H3时停止
                 break
             elif in_overview:
                 overview_lines.append(line)
@@ -83,38 +140,35 @@ class SmartChunker:
 
         for line in lines:
             if line.startswith('## '):
-                if line.strip() == '## Overview':
+                if line.strip() == '## Overview':  # 跳过Overview章节
                     continue
 
-                if current_section:
+                if current_section:  # 保存前一个章节
                     sections.append('\n'.join(current_section))
-                current_section = [line]
-            elif current_section:
+                current_section = [line]  # 开始新章节
+            elif current_section:  # 收集当前章节的内容
                 current_section.append(line)
 
-        if current_section:
+        if current_section:  # 保存最后一个章节
             sections.append('\n'.join(current_section))
 
         return sections
 
     def _split_h3_sections(self, text: str) -> List[str]:
-        """分割所有###章节，排除Overview章节"""
+        """分割所有###章节（包括Overview内的H3）"""
         lines = text.split('\n')
         sections = []
         current_section = []
 
         for line in lines:
-            if line.startswith('### '):
-                if line.strip() == '### Overview':
-                    continue
-
-                if current_section:
+            if line.startswith('### '):  # 遇到H3标题
+                if current_section:  # 保存前一个章节
                     sections.append('\n'.join(current_section))
-                current_section = [line]
-            elif current_section:
+                current_section = [line]  # 开始新章节
+            elif current_section:  # 收集当前章节的内容
                 current_section.append(line)
 
-        if current_section:
+        if current_section:  # 保存最后一个章节
             sections.append('\n'.join(current_section))
 
         return sections
@@ -123,7 +177,8 @@ class SmartChunker:
         """从sections构建chunks"""
         chunks = []
         for section in sections:
-            if section.strip():
+            if section.strip():  # 跳过空章节
+                # 每个chunk = 标题部分 + 概述部分 + 具体章节
                 chunk_content = self._build_chunk_content(title_part, overview, section)
                 chunks.append(chunk_content)
         return chunks
@@ -132,13 +187,13 @@ class SmartChunker:
         """构建chunk内容：标题部分 + Overview(可选) + 当前章节"""
         parts = []
 
-        if title_part:
+        if title_part:  # 添加标题部分（文档背景）
             parts.append(title_part)
 
-        if overview:
+        if overview:  # 添加概述部分（上下文信息）
             parts.append(overview)
 
-        if section:
+        if section:  # 添加具体章节（主要内容）
             parts.append(section)
 
-        return '\n\n'.join(parts)
+        return '\n\n'.join(parts)  # 用双换行分隔各部分
