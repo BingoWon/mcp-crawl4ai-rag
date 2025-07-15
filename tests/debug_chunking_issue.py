@@ -77,7 +77,7 @@ async def debug_chunking_issue():
             
             # 尝试分块
             print(f"\n🔧 尝试分块...")
-            chunks = chunker.chunk_text_simple(clean_content)
+            chunks = chunker.chunk_text(clean_content)
             
             print(f"📦 分块结果: {len(chunks)} 个chunks")
             
@@ -151,7 +151,7 @@ This section covers advanced topics.
 This section helps with troubleshooting."""
     
     chunker = SmartChunker()
-    chunks = chunker.chunk_text_simple(sample_content)
+    chunks = chunker.chunk_text(sample_content)
     
     print(f"📦 示例内容分块结果: {len(chunks)} 个chunks")
     

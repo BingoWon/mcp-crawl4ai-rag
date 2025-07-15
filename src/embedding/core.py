@@ -113,8 +113,3 @@ def create_embedding(text: str, is_query: bool = False) -> List[float]:
     embedder = get_embedder()
     return embedder.encode_single(text, is_query=is_query)
 
-
-def reset_embedder() -> None:
-    """Reset global embedder instance (useful for testing)"""
-    global _global_embedder
-    _global_embedder = None
