@@ -19,7 +19,8 @@ Apple文档专用智能分块实现
   1. title_part: 文档开头到第一个 ## 之前的内容
   2. overview: 通过 _extract_overview_for_h3() 提取，到第一个 ### 停止
   3. h3_sections: 所有 ### 章节（包括 Overview 内的 ###）
-  4. 最终chunks: 每个chunk = title_part + overview + 单个h3_section
+  4. 智能合并: 小于256字符的H3章节自动与下一个H3合并
+  5. 最终chunks: 每个chunk = title_part + overview + 单个h3_section
 
 【第三优先级：完整内容】
 - 触发条件：短文档（≤5000字符）或无有效标题结构
@@ -30,7 +31,17 @@ Apple文档专用智能分块实现
 1. 语义完整性：每个chunk都包含完整的上下文（背景+概述+具体内容）
 2. 结构化分割：优先按文档的层次结构进行分割
 3. 自适应策略：根据文档特点自动选择最适合的分割方式
-4. 内容无丢失：确保所有内容都被正确处理，无遗漏
+4. 智能合并：避免过小的chunks，确保内容的语义完整性
+5. 内容无丢失：确保所有内容都被正确处理，无遗漏
+
+=== H3章节智能合并策略 ===
+
+**合并条件**：H3章节内容少于256字符
+**合并方式**：与下一个H3章节合并为单个chunk
+**优化效果**：
+- 消除过小的chunks，提高检索效果
+- 保持相关内容的语义连贯性
+- 平衡chunk大小分布，优化整体质量
 
 === Overview 处理差异 ===
 
@@ -155,7 +166,7 @@ class SmartChunker:
         return sections
 
     def _split_h3_sections(self, text: str) -> List[str]:
-        """分割所有###章节（包括Overview内的H3）"""
+        """分割所有###章节（包括Overview内的H3）并合并小章节"""
         lines = text.split('\n')
         sections = []
         current_section = []
@@ -171,7 +182,31 @@ class SmartChunker:
         if current_section:  # 保存最后一个章节
             sections.append('\n'.join(current_section))
 
-        return sections
+        return self._merge_small_sections(sections)
+
+    def _merge_small_sections(self, sections: List[str]) -> List[str]:
+        """合并小于256字符的H3章节"""
+        if not sections:
+            return sections
+
+        merged = []
+        i = 0
+
+        while i < len(sections):
+            current = sections[i]
+
+            # 如果当前章节小于256字符且不是最后一个章节
+            if len(current) < 256 and i + 1 < len(sections):
+                # 与下一个章节合并
+                next_section = sections[i + 1]
+                merged_section = current + '\n\n' + next_section
+                merged.append(merged_section)
+                i += 2  # 跳过下一个章节
+            else:
+                merged.append(current)
+                i += 1
+
+        return merged
 
     def _build_chunks_from_sections(self, title_part: str, overview: str, sections: List[str]) -> List[str]:
         """从sections构建chunks"""
