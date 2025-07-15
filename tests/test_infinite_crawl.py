@@ -42,17 +42,18 @@ async def test_short_infinite_crawl():
         
         while crawl_count < max_crawls:
             try:
-                # Get next URL to crawl (minimum crawl_count)
-                next_url = await crawler.db_operations.get_next_crawl_url()
-                if not next_url:
+                # Get next URL and content to crawl (minimum crawl_count)
+                result = await crawler.db_operations.get_next_crawl_url()
+                if not result:
                     print("没有URL可爬取")
                     break
 
+                next_url, existing_content = result
                 crawl_count += 1
                 print(f"\n=== 爬取 #{crawl_count}: {next_url} ===")
 
                 # Crawl and process the URL
-                await crawler._crawl_and_process_url(next_url)
+                await crawler._crawl_and_process_url(next_url, bool(existing_content))
                 
                 # 显示当前状态
                 async with PostgreSQLClient() as client:

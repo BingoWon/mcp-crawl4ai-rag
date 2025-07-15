@@ -5,9 +5,6 @@ Continuous Crawler - Simplified
 
 Continuously crawls Apple documentation and stores data to database.
 持续爬取Apple文档并存储数据到数据库。
-
-Uses existing .env configuration (MAX_DEPTH, etc.)
-使用现有的.env配置（MAX_DEPTH等）
 """
 
 import sys
