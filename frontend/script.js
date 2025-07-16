@@ -12,7 +12,7 @@ class DatabaseViewer {
 
     // 分页配置
     this.pagination = {
-      pages: { page: 1, size: 50, total: 0, pages: 0 },
+      pages: { page: 1, size: 100, total: 0, pages: 0 },
       chunks: { page: 1, size: 50, total: 0, pages: 0 },
     };
 
@@ -64,7 +64,7 @@ class DatabaseViewer {
     try {
       const currentPage = page || this.pagination.pages.page;
       const response = await fetch(
-        `${this.apiBase}/pages?page=${currentPage}&size=${this.pagination.pages.size}`
+        `${this.apiBase}/pages?page=${currentPage}&size=${this.pagination.pages.size}&sort=updated_at&order=desc`
       );
       const result = await response.json();
 
