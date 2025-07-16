@@ -7,8 +7,27 @@ Modern async PostgreSQL client with pgvector support.
 """
 
 import asyncpg
+import uuid
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from .config import PostgreSQLConfig
+
+
+def serialize_db_value(value):
+    """Convert database values to JSON-serializable format"""
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    elif isinstance(value, datetime):
+        return value.isoformat()
+    elif value is None:
+        return None
+    else:
+        return value
+
+
+def serialize_db_row(row) -> Dict[str, Any]:
+    """Convert database row to JSON-serializable dictionary"""
+    return {key: serialize_db_value(value) for key, value in row.items()}
 
 
 class PostgreSQLClient:
@@ -97,10 +116,10 @@ class PostgreSQLClient:
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_url ON chunks(url)")
     
     async def execute_query(self, query: str, *args) -> List[Dict[str, Any]]:
-        """Execute a query and return results as list of dicts"""
+        """Execute a query and return results as list of dicts with serialized values"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(query, *args)
-            return [dict(row) for row in rows]
+            return [serialize_db_row(row) for row in rows]
     
     async def execute_command(self, command: str, *args) -> str:
         """Execute a command and return status"""
@@ -113,10 +132,16 @@ class PostgreSQLClient:
             await conn.executemany(command, args_list)
 
     async def fetch_one(self, query: str, *args) -> Optional[Dict[str, Any]]:
-        """Fetch single row as dictionary"""
+        """Fetch single row as dictionary with serialized values"""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(query, *args)
-            return dict(row) if row else None
+            return serialize_db_row(row) if row else None
+
+    async def fetch_all(self, query: str, *args) -> List[Dict[str, Any]]:
+        """Fetch all rows as list of dictionaries with serialized values"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, *args)
+            return [serialize_db_row(row) for row in rows]
 
     async def fetch_val(self, query: str, *args) -> Any:
         """Fetch single value"""

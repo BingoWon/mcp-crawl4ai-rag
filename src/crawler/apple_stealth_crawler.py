@@ -93,19 +93,51 @@ class AppleStealthCrawler:
         if self.crawler:
             await self.crawler.__aexit__(exc_type, exc_val, exc_tb)
     
-    async def extract_content(self, url: str):
-        """提取高质量内容"""
-        logger.info(f"Extracting content from: {url}")
-        config = self._create_config("#app-main")
+    async def extract_content_and_links(self, url: str, css_selector: str = None):
+        """提取内容和链接，有css_selector时自动清理Apple文档"""
+        logger.info(f"Extracting content and links from: {url}")
+        config = self._create_config(css_selector)
         result = await self.crawler.arun(url=url, config=config)
-        logger.info(f"Content extracted from: {url}")
-        return result.markdown
 
-    async def extract_links(self, url: str):
-        """提取页面链接"""
-        logger.info(f"Extracting links from: {url}")
-        config = self._create_config()
-        result = await self.crawler.arun(url=url, config=config)
-        logger.info(f"Links extracted from: {url}")
-        return result.links
+        content = result.markdown
+        if css_selector:
+            content = self._post_process_apple_content(content)
+
+        logger.info(f"Content and links extracted from: {url}")
+        return content, result.links
+
+    def _post_process_apple_content(self, content: str) -> str:
+        """后处理Apple文档内容，清理导航元素、图片内容和"See Also"部分"""
+        import re
+        lines = content.split('\n')
+
+        # 处理"See Also"截断
+        see_also_index = -1
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            if 'see also' in line_lower or 'see-also' in line_lower:
+                see_also_index = i
+                break
+
+        if see_also_index >= 0:
+            lines = lines[:see_also_index]
+
+        clean_lines = []
+        for line in lines:
+            # 移除图片部分，保留后面的文字：![描述](URL)文字说明
+            line = re.sub(r'!\[.*?\]\([^)]+\)', '', line)
+
+            # 清理章节标题中的URL链接
+            title_url_pattern = r'^(\s*)(#{1,6})\s*\[(.*?)\]\((.*?)\)'
+            match = re.match(title_url_pattern, line)
+            if match:
+                leading_whitespace, level, title_text, _ = match.groups()
+                line = f'{leading_whitespace}{level} {title_text}'
+
+            # 清理行内超链接：[text](url) -> text (智能处理转义括号)
+            line = re.sub(r'\[([^\]]+)\]\((?:[^)\\]|\\.)*\)', r'\1', line)
+
+            clean_lines.append(line)
+
+        return '\n'.join(clean_lines)
 

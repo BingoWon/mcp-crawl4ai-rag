@@ -10,6 +10,12 @@ class DatabaseViewer {
       stats: null,
     };
 
+    // 分页配置
+    this.pagination = {
+      pages: { page: 1, size: 50, total: 0, pages: 0 },
+      chunks: { page: 1, size: 50, total: 0, pages: 0 },
+    };
+
     // 虚拟滚动配置
     this.virtualScroll = {
       rowHeight: 40,
@@ -54,12 +60,21 @@ class DatabaseViewer {
     this.updateLastUpdateTime();
   }
 
-  async loadPages() {
+  async loadPages(page = null) {
     try {
-      const response = await fetch(`${this.apiBase}/pages`);
+      const currentPage = page || this.pagination.pages.page;
+      const response = await fetch(
+        `${this.apiBase}/pages?page=${currentPage}&size=${this.pagination.pages.size}`
+      );
       const result = await response.json();
 
       if (result.success) {
+        // 更新分页信息，确保类型正确
+        this.pagination.pages.page = parseInt(result.pagination.page) || 1;
+        this.pagination.pages.size = parseInt(result.pagination.size) || 50;
+        this.pagination.pages.total = parseInt(result.pagination.total) || 0;
+        this.pagination.pages.pages = parseInt(result.pagination.pages) || 0;
+
         // 智能刷新：只有数据变化时才更新DOM
         if (!this.isDataEqual(this.lastData.pages, result.data)) {
           this.renderPages(result.data);
@@ -72,21 +87,32 @@ class DatabaseViewer {
             this.showTable("pages");
           }
         }
-        this.updatePanelCount("pages", result.count, result.data);
+
+        // 更新分页UI
+        this.updatePagination("pages");
       } else {
-        this.showError("pages", result.error);
+        this.showError("pages", result.error || "未知错误");
       }
     } catch (error) {
-      this.showError("pages", error.message);
+      this.showError("pages", error.message || "网络错误");
     }
   }
 
-  async loadChunks() {
+  async loadChunks(page = null) {
     try {
-      const response = await fetch(`${this.apiBase}/chunks`);
+      const currentPage = page || this.pagination.chunks.page;
+      const response = await fetch(
+        `${this.apiBase}/chunks?page=${currentPage}&size=${this.pagination.chunks.size}`
+      );
       const result = await response.json();
 
       if (result.success) {
+        // 更新分页信息，确保类型正确
+        this.pagination.chunks.page = parseInt(result.pagination.page) || 1;
+        this.pagination.chunks.size = parseInt(result.pagination.size) || 50;
+        this.pagination.chunks.total = parseInt(result.pagination.total) || 0;
+        this.pagination.chunks.pages = parseInt(result.pagination.pages) || 0;
+
         // 智能刷新：只有数据变化时才更新DOM
         if (!this.isDataEqual(this.lastData.chunks, result.data)) {
           this.renderChunks(result.data);
@@ -99,12 +125,14 @@ class DatabaseViewer {
             this.showTable("chunks");
           }
         }
-        this.updatePanelCount("chunks", result.count);
+
+        // 更新分页UI
+        this.updatePagination("chunks");
       } else {
-        this.showError("chunks", result.error);
+        this.showError("chunks", result.error || "未知错误");
       }
     } catch (error) {
-      this.showError("chunks", error.message);
+      this.showError("chunks", error.message || "网络错误");
     }
   }
 
@@ -203,7 +231,7 @@ class DatabaseViewer {
       ).textContent = `有内容: ${stats.pages_with_content} (${stats.content_percentage}%)`;
       document.getElementById(
         "pages-avg-crawl"
-      ).textContent = `平均爬取: ${stats.avg_crawl_count}`;
+      ).textContent = `平均爬取次数: ${stats.avg_crawl_count}`;
     } else if (type === "chunks") {
       // chunks保持原有显示方式
       const panelCountElement = document.getElementById(`${type}-panel-count`);
@@ -331,6 +359,68 @@ class DatabaseViewer {
     if (!oldData && !newData) return true;
     if (!oldData || !newData) return false;
     return JSON.stringify(oldData) === JSON.stringify(newData);
+  }
+
+  // 更新分页UI
+  updatePagination(type) {
+    const pagination = this.pagination[type];
+    const container = document.getElementById(`${type}-pagination`);
+
+    if (!container || pagination.pages <= 1) {
+      if (container) container.style.display = "none";
+      return;
+    }
+
+    container.style.display = "flex";
+    container.innerHTML = this.generatePaginationHTML(type, pagination);
+  }
+
+  // 生成分页HTML
+  generatePaginationHTML(type, pagination) {
+    const { page, pages } = pagination;
+    let html = "";
+
+    // 上一页
+    html += `<button onclick="viewer.changePage('${type}', ${page - 1})"
+             ${page <= 1 ? "disabled" : ""}>上一页</button>`;
+
+    // 页码
+    const startPage = Math.max(1, page - 2);
+    const endPage = Math.min(pages, page + 2);
+
+    if (startPage > 1) {
+      html += `<button onclick="viewer.changePage('${type}', 1)">1</button>`;
+      if (startPage > 2) html += `<span>...</span>`;
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      html += `<button onclick="viewer.changePage('${type}', ${i})"
+               ${i === page ? 'class="active"' : ""}>${i}</button>`;
+    }
+
+    if (endPage < pages) {
+      if (endPage < pages - 1) html += `<span>...</span>`;
+      html += `<button onclick="viewer.changePage('${type}', ${pages})">${pages}</button>`;
+    }
+
+    // 下一页
+    html += `<button onclick="viewer.changePage('${type}', ${page + 1})"
+             ${page >= pages ? "disabled" : ""}>下一页</button>`;
+
+    return html;
+  }
+
+  // 切换页面
+  async changePage(type, newPage) {
+    if (newPage < 1 || newPage > this.pagination[type].pages) return;
+
+    this.pagination[type].page = newPage;
+
+    if (type === "pages") {
+      await this.loadPages(newPage);
+    } else if (type === "chunks") {
+      await this.loadChunks(newPage);
+    }
   }
 
   // 清除缓存，强制刷新

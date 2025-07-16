@@ -17,7 +17,7 @@ from chunking import SmartChunker
 
 async def test_apple_metal_chunking():
     """测试 Apple Metal 文档的 chunking"""
-    url = "https://developer.apple.com/documentation/Metal/implementing-a-multistage-image-filter-using-heaps-and-events"
+    url = "https://developer.apple.com/documentation/xcode/preparing-dates-numbers-with-formatters"
     
     print(f"🚀 开始测试 Apple Metal 文档 chunking")
     print(f"URL: {url}")
