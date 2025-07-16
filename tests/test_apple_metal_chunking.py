@@ -17,7 +17,7 @@ from chunking import SmartChunker
 
 async def test_apple_metal_chunking():
     """测试 Apple Metal 文档的 chunking"""
-    url = "https://developer.apple.com/documentation/xcode/preparing-dates-numbers-with-formatters"
+    url = "https://developer.apple.com/documentation/Swift/String"
     
     print(f"🚀 开始测试 Apple Metal 文档 chunking")
     print(f"URL: {url}")
@@ -32,25 +32,12 @@ async def test_apple_metal_chunking():
         # 爬取页面
         print("🕷️ 爬取页面内容...")
         async with crawler:
-            crawl_results = await crawler.crawl_apple_documentation(url)
-
-        if not crawl_results:
-            print("❌ 爬取失败或内容为空")
-            return False
-
-        # 获取第一个结果的内容
-        crawl_result = crawl_results[0]
-        print(f"🔍 调试：crawl_result keys: {list(crawl_result.keys())}")
-
-        # 尝试不同的键名
-        clean_content = (crawl_result.get('content', '') or
-                        crawl_result.get('clean_content', '') or
-                        crawl_result.get('text', '') or
-                        crawl_result.get('markdown', ''))
+            from crawler.apple_stealth_crawler import AppleStealthCrawler
+            async with AppleStealthCrawler() as stealth_crawler:
+                clean_content, links = await stealth_crawler.extract_content_and_links(url, "#app-main")
 
         if not clean_content:
-            print("❌ 爬取内容为空")
-            print(f"🔍 调试：crawl_result 内容: {crawl_result}")
+            print("❌ 爬取失败或内容为空")
             return False
 
         print(f"✅ 爬取成功，内容长度: {len(clean_content)} 字符")

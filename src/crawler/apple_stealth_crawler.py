@@ -72,12 +72,10 @@ class AppleStealthCrawler:
         """创建爬虫配置"""
         return CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS,
-            word_count_threshold=10,
-            delay_before_return_html=3.0,
-            page_timeout=15000,
+            delay_before_return_html=2.0,
+            page_timeout=10000,
             css_selector=css_selector,
-            exclude_external_links=False,
-            exclude_social_media_links=True
+            exclude_external_links=True,   
         )
     
     async def __aenter__(self):
