@@ -29,8 +29,8 @@ app.add_middleware(
 
 
 @app.get("/api/pages")
-async def get_pages(page: int = 1, size: int = 50, search: str = "",
-                   sort: str = "crawl_count", order: str = "asc") -> JSONResponse:
+async def get_pages(page: int = 1, size: int = 100, search: str = "",
+                   sort: str = "updated_at", order: str = "desc") -> JSONResponse:
     """获取pages表数据（分页）"""
     try:
         async with PostgreSQLClient() as client:
@@ -43,7 +43,7 @@ async def get_pages(page: int = 1, size: int = 50, search: str = "",
 
             # 构建排序
             valid_sorts = ["id", "url", "crawl_count", "created_at", "updated_at"]
-            sort_column = sort if sort in valid_sorts else "crawl_count"
+            sort_column = sort if sort in valid_sorts else "updated_at"
             sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
             # 计算分页

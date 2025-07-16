@@ -21,10 +21,6 @@ from utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-# ============================================================================
-# CONFIGURATION - Single hyperparameter + .env variables
-# ============================================================================
-
 # Hyperparameter: Starting URL for crawling
 TARGET_URL = "https://developer.apple.com/documentation/"
 
