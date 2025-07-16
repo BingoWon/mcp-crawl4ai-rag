@@ -69,15 +69,22 @@ class SmartChunker:
 
         if not text:
             return []
+        
+        if len(text) <= 2048:
+            return [text]
 
         # 提取文档标题部分（到第一个 ## 之前）
         title_part = self._extract_title_part(text)
 
         # 第一优先级：H2分割 - 检查是否有除Overview外的其他##标题
         h2_sections = self._split_h2_sections(text)
-        if h2_sections:
+        if len(h2_sections) > 1:
             # H2分割时：Overview 包含到下一个 ## 之前的所有内容
             overview = self._extract_overview_for_h2(text)
+            # 如果overview长度大于文档长度的一半 且 小于7000字符，则不进行分块
+            if (len(text) // 2) < len(overview) < 7000:
+                return [text]
+            
             chunks = self._build_chunks_from_sections(title_part, overview, h2_sections)
             logger.info(f"##标题分块完成: {len(chunks)} chunks")
             return chunks

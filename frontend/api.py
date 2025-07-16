@@ -4,10 +4,10 @@
 """
 
 import sys
+import ast
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
@@ -29,15 +29,42 @@ app.add_middleware(
 
 
 @app.get("/api/pages")
-async def get_pages() -> JSONResponse:
-    """获取pages表数据"""
+async def get_pages(page: int = 1, size: int = 50, search: str = "",
+                   sort: str = "crawl_count", order: str = "asc") -> JSONResponse:
+    """获取pages表数据（分页）"""
     try:
         async with PostgreSQLClient() as client:
-            pages = await client.execute_query("""
+            # 构建查询条件
+            where_clause = ""
+            params = []
+            if search:
+                where_clause = "WHERE url ILIKE $1 OR content ILIKE $1"
+                params.append(f"%{search}%")
+
+            # 构建排序
+            valid_sorts = ["id", "url", "crawl_count", "created_at", "updated_at"]
+            sort_column = sort if sort in valid_sorts else "crawl_count"
+            sort_order = "ASC" if order.lower() == "asc" else "DESC"
+
+            # 计算分页
+            offset = (page - 1) * size
+
+            # 获取总数
+            count_query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
+            total_result = await client.fetch_all(count_query, *params)
+            total = total_result[0]["total"]
+
+            # 获取分页数据
+            limit_param = len(params) + 1
+            offset_param = len(params) + 2
+            query = f"""
                 SELECT id, url, content, crawl_count, created_at, updated_at
-                FROM pages
-                ORDER BY crawl_count ASC, created_at DESC
-            """)
+                FROM pages {where_clause}
+                ORDER BY {sort_column} {sort_order}
+                LIMIT ${limit_param} OFFSET ${offset_param}
+            """
+            params.extend([size, offset])
+            pages = await client.fetch_all(query, *params)
 
             # 格式化数据
             formatted_pages = []
@@ -48,20 +75,25 @@ async def get_pages() -> JSONResponse:
                     display_url = display_url.replace("https://developer.apple.com/documentation", "...")
 
                 formatted_pages.append({
-                    "id": str(page["id"]),
+                    "id": page["id"],  # 数据库层已处理UUID序列化
                     "url": display_url,
                     "full_url": page["url"],  # 完整URL
                     "content": page["content"][:100] + "..." if len(page["content"]) > 100 else page["content"],
                     "full_content": page["content"],  # 完整内容
                     "crawl_count": page["crawl_count"],
-                    "created_at": page["created_at"].isoformat() if page["created_at"] else None,
-                    "updated_at": page["updated_at"].isoformat() if page["updated_at"] else None
+                    "created_at": page["created_at"],  # 数据库层已转换为ISO格式
+                    "updated_at": page["updated_at"]  # 数据库层已转换为ISO格式
                 })
 
             return JSONResponse({
                 "success": True,
-                "count": len(formatted_pages),
-                "data": formatted_pages
+                "data": formatted_pages,
+                "pagination": {
+                    "page": page,  # FastAPI已确保是整数
+                    "size": size,  # FastAPI已确保是整数
+                    "total": total,
+                    "pages": (total + size - 1) // size
+                }
             })
     except Exception as e:
         return JSONResponse({
@@ -72,15 +104,50 @@ async def get_pages() -> JSONResponse:
 
 
 @app.get("/api/chunks")
-async def get_chunks() -> JSONResponse:
-    """获取chunks表数据"""
+async def get_chunks(page: int = 1, size: int = 50, search: str = "",
+                    page_id: str = "", sort: str = "created_at", order: str = "desc") -> JSONResponse:
+    """获取chunks表数据（分页）"""
     try:
         async with PostgreSQLClient() as client:
-            chunks = await client.execute_query("""
+            # 构建查询条件
+            where_conditions = []
+            params = []
+
+            if search:
+                where_conditions.append("(url ILIKE $1 OR content ILIKE $1)")
+                params.append(f"%{search}%")
+
+            if page_id:
+                param_index = len(params) + 1
+                where_conditions.append(f"url IN (SELECT url FROM pages WHERE id = ${param_index}::uuid)")
+                params.append(page_id)
+
+            where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+
+            # 构建排序
+            valid_sorts = ["id", "url", "created_at"]
+            sort_column = sort if sort in valid_sorts else "created_at"
+            sort_order = "ASC" if order.lower() == "asc" else "DESC"
+
+            # 计算分页
+            offset = (page - 1) * size
+
+            # 获取总数
+            count_query = f"SELECT COUNT(*) as total FROM chunks {where_clause}"
+            total_result = await client.fetch_all(count_query, *params)
+            total = total_result[0]["total"]
+
+            # 获取分页数据
+            limit_param = len(params) + 1
+            offset_param = len(params) + 2
+            query = f"""
                 SELECT id, url, content, created_at, embedding
-                FROM chunks
-                ORDER BY created_at DESC
-            """)
+                FROM chunks {where_clause}
+                ORDER BY {sort_column} {sort_order}
+                LIMIT ${limit_param} OFFSET ${offset_param}
+            """
+            params.extend([size, offset])
+            chunks = await client.fetch_all(query, *params)
 
             # 格式化数据
             formatted_chunks = []
@@ -103,20 +170,25 @@ async def get_chunks() -> JSONResponse:
                         embedding_info = "解析错误"
 
                 formatted_chunks.append({
-                    "id": str(chunk["id"]),
+                    "id": chunk["id"],  # 数据库层已处理UUID序列化
                     "url": display_url,
                     "full_url": chunk["url"],  # 完整URL
                     "content": chunk["content"][:100] + "..." if len(chunk["content"]) > 100 else chunk["content"],
                     "full_content": chunk["content"],  # 完整内容
-                    "created_at": chunk["created_at"].isoformat() if chunk["created_at"] else None,
+                    "created_at": chunk["created_at"],  # 数据库层已转换为ISO格式
                     "embedding_info": embedding_info,
-                    "raw_embedding": chunk["embedding"]  # 原始embedding数据
+                    "raw_embedding": str(chunk["embedding"]) if chunk["embedding"] else None
                 })
 
             return JSONResponse({
                 "success": True,
-                "count": len(formatted_chunks),
-                "data": formatted_chunks
+                "data": formatted_chunks,
+                "pagination": {
+                    "page": page,  # FastAPI已确保是整数
+                    "size": size,  # FastAPI已确保是整数
+                    "total": total,
+                    "pages": (total + size - 1) // size
+                }
             })
     except Exception as e:
         return JSONResponse({
@@ -132,17 +204,17 @@ async def get_stats() -> JSONResponse:
     try:
         async with PostgreSQLClient() as client:
             # 获取pages基础统计
-            pages_count = await client.execute_query("SELECT COUNT(*) as count FROM pages")
-            chunks_count = await client.execute_query("SELECT COUNT(*) as count FROM chunks")
+            pages_count = await client.fetch_all("SELECT COUNT(*) as count FROM pages")
+            chunks_count = await client.fetch_all("SELECT COUNT(*) as count FROM chunks")
 
             # 获取有content的pages统计
-            pages_with_content = await client.execute_query("""
+            pages_with_content = await client.fetch_all("""
                 SELECT COUNT(*) as count FROM pages
                 WHERE content IS NOT NULL AND content != ''
             """)
 
             # 获取平均crawl count
-            avg_crawl_count = await client.execute_query("""
+            avg_crawl_count = await client.fetch_all("""
                 SELECT AVG(crawl_count) as avg_count FROM pages
             """)
 
