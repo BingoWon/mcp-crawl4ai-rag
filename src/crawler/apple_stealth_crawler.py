@@ -8,6 +8,7 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from typing import Dict, Any, Optional
 import asyncio
 from utils.logger import setup_logger
+import re
 
 logger = setup_logger(__name__)
 
@@ -105,22 +106,10 @@ class AppleStealthCrawler:
         return content, result.links
 
     def _post_process_apple_content(self, content: str) -> str:
-        """后处理Apple文档内容，清理导航元素、图片内容和"See Also"部分"""
-        import re
+        """后处理Apple文档内容，清理导航元素、图片内容和不需要的章节"""
         lines = content.split('\n')
-
-        # 处理"See Also"截断
-        see_also_index = -1
-        for i, line in enumerate(lines):
-            line_lower = line.lower()
-            if 'see also' in line_lower or 'see-also' in line_lower:
-                see_also_index = i
-                break
-
-        if see_also_index >= 0:
-            lines = lines[:see_also_index]
-
         clean_lines = []
+
         for line in lines:
             # 移除图片部分，保留后面的文字：![描述](URL)文字说明
             line = re.sub(r'!\[.*?\]\([^)]+\)', '', line)
@@ -134,6 +123,13 @@ class AppleStealthCrawler:
 
             # 清理行内超链接：[text](url) -> text (智能处理转义括号)
             line = re.sub(r'\[([^\]]+)\]\((?:[^)\\]|\\.)*\)', r'\1', line)
+
+            line_stripped = line.strip()
+
+            # 检查是否遇到需要截断的章节
+            if line_stripped in ['## Topics', '## See Also']:
+                logger.info(f"截断章节: {line_stripped}")
+                break  # 直接跳出循环，后续内容全部丢弃
 
             clean_lines.append(line)
 
