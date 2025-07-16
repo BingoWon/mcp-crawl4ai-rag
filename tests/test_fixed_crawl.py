@@ -42,14 +42,15 @@ async def test_fixed_crawl():
             
             try:
                 # 爬取页面内容
-                apple_results = await crawler.crawl_apple_documentation(url)
-                
-                if apple_results:
+                from crawler.apple_stealth_crawler import AppleStealthCrawler
+                async with AppleStealthCrawler() as stealth_crawler:
+                    clean_content, links = await stealth_crawler.extract_content_and_links(url, "#app-main")
+
+                if clean_content:
                     # 处理内容
-                    result = apple_results[0]
                     process_result = await crawler._process_and_store_content(
-                        result['url'], 
-                        result['markdown']
+                        url,
+                        clean_content
                     )
                     
                     if process_result["success"]:

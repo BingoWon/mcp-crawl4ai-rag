@@ -164,10 +164,10 @@ class IndependentCrawler:
                 if content:
                     break
                 if i == 2:
-                    logger.error(f"No content crawled for {url}, skipping")
+                    logger.error(f"❌ No content crawled for {url}, skipping")
                     break
                 else:
-                    logger.error(f"No content crawled for {url}, retrying...")
+                    logger.error(f"❌ No content crawled for {url}, retrying...")
                     await asyncio.sleep(1)
 
             # 即便没有爬到结果也要更新数据库
@@ -179,13 +179,13 @@ class IndependentCrawler:
 
             # 3.1. 如果没有爬到内容，则不进行后续处理
             if not content.strip():
-                logger.error(f"No content crawled for {url}, skipping chunking and embedding")
+                logger.error(f"❌ No content crawled for {url}, skipping chunking and embedding")
                 return
 
             # 4. Process content: chunking + embedding + storage
             chunks = self.chunker.chunk_text(content)
             if not chunks:
-                logger.error(f"No chunks generated for {url}")
+                logger.error(f"❌ No chunks generated for {url}")
                 return
 
             self.log_mps_memory("before embedding")
@@ -194,7 +194,7 @@ class IndependentCrawler:
             for i, chunk in enumerate(chunks):
                 logger.info(f"Processing {i+1}/{len(chunks)} chunk")
                 if not chunk.strip():
-                    logger.error(f"Empty chunk {i+1} for {url}, skipping embedding")
+                    logger.error(f"❌ Empty chunk {i+1} for {url}, skipping embedding")
                     continue
                 embedding = create_embedding(chunk)
                 data_to_insert.append({
@@ -204,7 +204,7 @@ class IndependentCrawler:
                 })
 
             if not data_to_insert:
-                logger.error(f"No data to insert for {url}")
+                logger.error(f"❌ No data to insert for {url}")
                 return
 
             self.log_mps_memory("after embedding")
