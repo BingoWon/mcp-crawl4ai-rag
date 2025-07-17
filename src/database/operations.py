@@ -5,6 +5,25 @@ Database Operations
 High-level database operations for crawled content and RAG functionality.
 爬取内容和RAG功能的高级数据库操作。
 
+=== 智能调度策略设计 ===
+
+本模块实现了基于时间优先级的智能调度策略，最大化爬取和处理的业务价值：
+
+**爬取调度策略：优先选择最久未更新的页面**
+- 核心原理：距离上次爬取时间越久，网站内容变动可能性越大
+- 调度逻辑：ORDER BY crawl_count ASC, updated_at ASC
+- 业务价值：最大化发现内容变更的概率，提高爬取资源利用效率
+
+**处理调度策略：优先选择最新更新的页面**
+- 核心原理：刚更新的内容最稳定，不太可能再次变动
+- 调度逻辑：ORDER BY process_count ASC, updated_at DESC
+- 业务价值：避免处理后因内容变动而失去价值，确保处理投入的最大回报
+
+**策略协同效应：**
+- 爬取器：持续刷新最可能变化的页面，保持内容新鲜度
+- 处理器：优先处理最稳定的内容，避免重复处理成本
+- 系统整体：实现爬取和处理资源的最优配置
+
 === 智能爬取优化设计 ===
 
 本模块实现了基于内容状态的智能爬取优化策略：
@@ -106,7 +125,7 @@ class DatabaseOperations:
         result = await self.client.fetch_one("""
             SELECT url, content FROM pages
             WHERE crawl_count = (SELECT MIN(crawl_count) FROM pages)
-            ORDER BY created_at ASC
+            ORDER BY updated_at ASC
             LIMIT 1
         """)
         return (result['url'], result['content']) if result else None
@@ -116,7 +135,7 @@ class DatabaseOperations:
         result = await self.client.fetch_one("""
             SELECT url, content FROM pages
             WHERE process_count = (SELECT MIN(process_count) FROM pages)
-            ORDER BY created_at ASC
+            ORDER BY updated_at DESC
             LIMIT 1
         """)
         return (result['url'], result['content']) if result else None
