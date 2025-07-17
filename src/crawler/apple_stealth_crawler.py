@@ -128,7 +128,6 @@ class AppleStealthCrawler:
 
             # 检查是否遇到需要截断的章节
             if line_stripped in ['## Topics', '## See Also']:
-                logger.info(f"截断章节: {line_stripped}")
                 break  # 直接跳出循环，后续内容全部丢弃
 
             clean_lines.append(line)
