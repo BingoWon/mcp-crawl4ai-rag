@@ -17,8 +17,8 @@ from chunking import SmartChunker
 
 async def test_apple_metal_chunking():
     """测试 Apple Metal 文档的 chunking"""
-    url = "https://developer.apple.com/documentation/SampleCode"
-    url = "https://developer.apple.com/documentation/WidgetKit"
+    # url = "https://developer.apple.com/documentation/SampleCode"
+    url = "https://developer.apple.com/documentation/applemapsserverapi/-v1-directions"
     
     print(f"🚀 开始测试 Apple Metal 文档 chunking")
     print(f"URL: {url}")
