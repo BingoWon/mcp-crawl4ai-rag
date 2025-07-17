@@ -125,6 +125,11 @@ class PureProcessor:
             await self.db_operations.update_page_after_process(url)
             return
 
+        # Validate chunk lengths
+        for i, chunk in enumerate(chunks):
+            if len(chunk) < 128:
+                logger.error(f"⚠️ Chunk {i+1} 长度过短: {len(chunk)} 字符 (最小要求: 128) - URL: {url}")
+
         data_to_insert = []
         for i, chunk in enumerate(chunks):
             logger.info(f"Processing chunk {i+1}/{len(chunks)}")
