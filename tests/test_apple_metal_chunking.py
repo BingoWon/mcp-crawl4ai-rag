@@ -11,13 +11,14 @@ from datetime import datetime
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from crawler.core import IndependentCrawler
+from crawler.core import PureCrawler
 from chunking import SmartChunker
 
 
 async def test_apple_metal_chunking():
     """测试 Apple Metal 文档的 chunking"""
-    url = "https://developer.apple.com/documentation/Swift/String"
+    url = "https://developer.apple.com/documentation/SampleCode"
+    url = "https://developer.apple.com/documentation/WidgetKit"
     
     print(f"🚀 开始测试 Apple Metal 文档 chunking")
     print(f"URL: {url}")
@@ -26,7 +27,7 @@ async def test_apple_metal_chunking():
     try:
         # 初始化组件
         print("📦 初始化组件...")
-        crawler = IndependentCrawler()
+        crawler = PureCrawler()
         chunker = SmartChunker()
         
         # 爬取页面

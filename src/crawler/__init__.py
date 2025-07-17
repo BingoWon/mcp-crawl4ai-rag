@@ -6,7 +6,7 @@ This module provides standalone crawling functionality without MCP dependencies.
 该模块提供独立的爬虫功能，不依赖MCP框架。
 """
 
-from .core import IndependentCrawler
+from .core import PureCrawler
 
 # Apple-specific components
 from .apple_stealth_crawler import AppleStealthCrawler
