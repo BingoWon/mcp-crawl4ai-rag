@@ -30,28 +30,25 @@
                 有内容: 0 (0%)
               </div>
               <div class="stat-item" id="pages-avg-crawl">平均爬取次数: 0</div>
+              <div class="stat-item" id="pages-avg-process">平均处理次数: 0</div>
+              <div class="stat-item" id="pages-avg-interval">近100次爬取平均耗时: --</div>
             </div>
           </div>
           <div class="panel-content">
             <div id="pages-error" class="error" style="display: none"></div>
-            <div
-              id="pages-table"
-              class="table-container virtual-scroll-container"
-            >
-              <table class="virtual-header-table">
+            <div id="pages-table" class="table-container">
+              <table>
                 <thead>
                   <tr>
                     <th>URL</th>
                     <th>Content</th>
                     <th>Crawl Count</th>
+                    <th>Process Count</th>
                     <th>Created</th>
                     <th>Updated</th>
                   </tr>
                 </thead>
-              </table>
-              <div id="pages-spacer" class="virtual-spacer"></div>
-              <table class="virtual-table">
-                <tbody id="pages-tbody" class="virtual-tbody"></tbody>
+                <tbody id="pages-tbody"></tbody>
               </table>
             </div>
             <div id="pages-pagination" class="pagination" style="display: none"></div>
@@ -69,11 +66,8 @@
           </div>
           <div class="panel-content">
             <div id="chunks-error" class="error" style="display: none"></div>
-            <div
-              id="chunks-table"
-              class="table-container virtual-scroll-container"
-            >
-              <table class="virtual-header-table">
+            <div id="chunks-table" class="table-container">
+              <table>
                 <thead>
                   <tr>
                     <th>URL</th>
@@ -82,10 +76,7 @@
                     <th>Created</th>
                   </tr>
                 </thead>
-              </table>
-              <div id="chunks-spacer" class="virtual-spacer"></div>
-              <table class="virtual-table">
-                <tbody id="chunks-tbody" class="virtual-tbody"></tbody>
+                <tbody id="chunks-tbody"></tbody>
               </table>
             </div>
             <div id="chunks-pagination" class="pagination" style="display: none"></div>

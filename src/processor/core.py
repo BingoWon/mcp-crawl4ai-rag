@@ -132,7 +132,7 @@ class PureProcessor:
 
         data_to_insert = []
         for i, chunk in enumerate(chunks):
-            logger.info(f"Processing chunk {i+1}/{len(chunks)}")
+            logger.info(f"Processing chunk {i+1}/{len(chunks)}, length: {len(chunk)}")
             if not chunk.strip():
                 logger.error(f"❌ Empty chunk {i+1} for {url}, skipping")
                 continue
