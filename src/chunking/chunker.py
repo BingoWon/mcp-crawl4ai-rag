@@ -99,16 +99,20 @@ class SmartChunker:
         return [text.strip()]
 
     def _split_h1_sections(self, text: str) -> List[str]:
-        """按H1标题分割文档"""
+        """按H1标题分割文档，确保H1数量等于chunk数量"""
         lines = text.split('\n')
         sections = []
         current_section = []
+        first_h1_found = False
 
         for line in lines:
             if line.startswith('# ') and not line.startswith('## '):
-                if current_section:
+                if first_h1_found:  # 不是第一个H1，保存前一个section
                     sections.append('\n'.join(current_section))
-                current_section = [line]
+                    current_section = [line]
+                else:  # 第一个H1，将之前的内容也包含进来
+                    current_section.append(line)
+                    first_h1_found = True
             else:
                 current_section.append(line)
 
