@@ -4,7 +4,6 @@
 """
 
 import sys
-import ast
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,7 +41,7 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
                 params.append(f"%{search}%")
 
             # 构建排序
-            valid_sorts = ["id", "url", "crawl_count", "created_at", "updated_at"]
+            valid_sorts = ["id", "url", "crawl_count", "process_count", "created_at", "updated_at"]
             sort_column = sort if sort in valid_sorts else "updated_at"
             sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
@@ -58,13 +57,39 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
             limit_param = len(params) + 1
             offset_param = len(params) + 2
             query = f"""
-                SELECT id, url, content, crawl_count, created_at, updated_at
+                SELECT id, url, content, crawl_count, process_count, created_at, updated_at
                 FROM pages {where_clause}
                 ORDER BY {sort_column} {sort_order}
                 LIMIT ${limit_param} OFFSET ${offset_param}
             """
             params.extend([size, offset])
             pages = await client.fetch_all(query, *params)
+
+            # 计算平均爬取间隔时间
+            avg_crawl_interval = None
+            if len(pages) >= 2:
+                # 按updated_at排序（确保时间顺序）
+                sorted_pages = sorted(pages, key=lambda x: x["updated_at"])
+                intervals = []
+
+                for i in range(1, len(sorted_pages)):
+                    prev_time = sorted_pages[i-1]["updated_at"]
+                    curr_time = sorted_pages[i]["updated_at"]
+
+                    # 计算时间间隔（秒）
+                    from datetime import datetime
+                    if isinstance(prev_time, str):
+                        prev_dt = datetime.fromisoformat(prev_time.replace('Z', '+00:00'))
+                        curr_dt = datetime.fromisoformat(curr_time.replace('Z', '+00:00'))
+                    else:
+                        prev_dt = prev_time
+                        curr_dt = curr_time
+
+                    interval_seconds = (curr_dt - prev_dt).total_seconds()
+                    intervals.append(interval_seconds)
+
+                if intervals:
+                    avg_crawl_interval = sum(intervals) / len(intervals)
 
             # 格式化数据
             formatted_pages = []
@@ -81,6 +106,7 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
                     "content": page["content"][:100] + "..." if len(page["content"]) > 100 else page["content"],
                     "full_content": page["content"],  # 完整内容
                     "crawl_count": page["crawl_count"],
+                    "process_count": page["process_count"],
                     "created_at": page["created_at"],  # 数据库层已转换为ISO格式
                     "updated_at": page["updated_at"]  # 数据库层已转换为ISO格式
                 })
@@ -93,6 +119,10 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
                     "size": size,  # FastAPI已确保是整数
                     "total": total,
                     "pages": (total + size - 1) // size
+                },
+                "stats": {
+                    "avg_crawl_interval": f"{avg_crawl_interval:.2f}" if avg_crawl_interval else None,
+                    "data_count": len(pages)
                 }
             })
     except Exception as e:
@@ -213,15 +243,21 @@ async def get_stats() -> JSONResponse:
                 WHERE content IS NOT NULL AND content != ''
             """)
 
-            # 获取平均crawl count
+            # 获取平均crawl count和process count
             avg_crawl_count = await client.fetch_all("""
                 SELECT AVG(crawl_count) as avg_count FROM pages
+            """)
+
+            avg_process_count = await client.fetch_all("""
+                SELECT AVG(process_count) as avg_count FROM pages
+                WHERE content IS NOT NULL AND content != ''
             """)
 
             total_pages = pages_count[0]["count"]
             content_pages = pages_with_content[0]["count"]
             content_percentage = (content_pages / total_pages * 100) if total_pages > 0 else 0
             avg_crawl = float(avg_crawl_count[0]["avg_count"]) if avg_crawl_count[0]["avg_count"] else 0
+            avg_process = float(avg_process_count[0]["avg_count"]) if avg_process_count[0]["avg_count"] else 0
 
             return JSONResponse({
                 "success": True,
@@ -229,8 +265,9 @@ async def get_stats() -> JSONResponse:
                     "pages_count": total_pages,
                     "chunks_count": chunks_count[0]["count"],
                     "pages_with_content": content_pages,
-                    "content_percentage": round(content_percentage, 1),
-                    "avg_crawl_count": round(avg_crawl, 2)
+                    "content_percentage": f"{content_percentage:.2f}",
+                    "avg_crawl_count": round(avg_crawl, 4),
+                    "avg_process_count": round(avg_process, 4)
                 }
             })
     except Exception as e:
@@ -242,7 +279,8 @@ async def get_stats() -> JSONResponse:
                 "chunks_count": 0,
                 "pages_with_content": 0,
                 "content_percentage": 0,
-                "avg_crawl_count": 0
+                "avg_crawl_count": 0,
+                "avg_process_count": 0
             }
         }, status_code=500)
 

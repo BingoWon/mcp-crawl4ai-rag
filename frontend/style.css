@@ -109,40 +109,10 @@ body {
   position: relative;
 }
 
-/* 表格容器 - 虚拟滚动 */
+/* 表格容器 */
 .table-container {
   height: 100%;
   overflow: auto;
-}
-
-.virtual-scroll-container {
-  position: relative;
-}
-
-.virtual-header-table {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: #f8f9fa;
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.virtual-spacer {
-  width: 100%;
-  /* 高度由JS动态设置 */
-}
-
-.virtual-table {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.virtual-tbody {
-  /* 虚拟tbody样式 */
 }
 
 table {

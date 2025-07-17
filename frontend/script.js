@@ -16,43 +16,12 @@ class DatabaseViewer {
       chunks: { page: 1, size: 50, total: 0, pages: 0 },
     };
 
-    // 虚拟滚动配置
-    this.virtualScroll = {
-      rowHeight: 40,
-      bufferRows: 5,
-      pages: { data: [], container: null, spacer: null, tbody: null },
-      chunks: { data: [], container: null, spacer: null, tbody: null },
-    };
-
     this.init();
   }
 
   init() {
-    this.initVirtualScroll();
     this.loadData();
     this.startAutoRefresh();
-  }
-
-  initVirtualScroll() {
-    // 初始化pages虚拟滚动
-    this.virtualScroll.pages.container = document.getElementById("pages-table");
-    this.virtualScroll.pages.spacer = document.getElementById("pages-spacer");
-    this.virtualScroll.pages.tbody = document.getElementById("pages-tbody");
-
-    // 初始化chunks虚拟滚动
-    this.virtualScroll.chunks.container =
-      document.getElementById("chunks-table");
-    this.virtualScroll.chunks.spacer = document.getElementById("chunks-spacer");
-    this.virtualScroll.chunks.tbody = document.getElementById("chunks-tbody");
-
-    // 绑定滚动事件
-    this.virtualScroll.pages.container.addEventListener("scroll", () => {
-      this.renderVirtualRows("pages");
-    });
-
-    this.virtualScroll.chunks.container.addEventListener("scroll", () => {
-      this.renderVirtualRows("chunks");
-    });
   }
 
   async loadData() {
@@ -86,6 +55,11 @@ class DatabaseViewer {
           } else {
             this.showTable("pages");
           }
+        }
+
+        // 更新页面级统计信息
+        if (result.stats) {
+          this.updatePageStats(result.stats);
         }
 
         // 更新分页UI
@@ -168,15 +142,9 @@ class DatabaseViewer {
       return;
     }
 
-    // 设置虚拟滚动数据
-    this.virtualScroll.pages.data = pages;
-
-    // 设置撑高元素高度
-    const totalHeight = pages.length * this.virtualScroll.rowHeight;
-    this.virtualScroll.pages.spacer.style.height = `${totalHeight}px`;
-
-    // 初始渲染
-    this.renderVirtualRows("pages");
+    // 直接渲染所有行
+    const tbody = document.getElementById("pages-tbody");
+    tbody.innerHTML = pages.map((page) => this.createPageRow(page)).join("");
 
     this.showTable("pages");
   }
@@ -187,15 +155,11 @@ class DatabaseViewer {
       return;
     }
 
-    // 设置虚拟滚动数据
-    this.virtualScroll.chunks.data = chunks;
-
-    // 设置撑高元素高度
-    const totalHeight = chunks.length * this.virtualScroll.rowHeight;
-    this.virtualScroll.chunks.spacer.style.height = `${totalHeight}px`;
-
-    // 初始渲染
-    this.renderVirtualRows("chunks");
+    // 直接渲染所有行
+    const tbody = document.getElementById("chunks-tbody");
+    tbody.innerHTML = chunks
+      .map((chunk) => this.createChunkRow(chunk))
+      .join("");
 
     this.showTable("chunks");
   }
@@ -232,12 +196,28 @@ class DatabaseViewer {
       document.getElementById(
         "pages-avg-crawl"
       ).textContent = `平均爬取次数: ${stats.avg_crawl_count}`;
+      document.getElementById(
+        "pages-avg-process"
+      ).textContent = `平均处理次数: ${stats.avg_process_count}`;
     } else if (type === "chunks") {
       // chunks保持原有显示方式
       const panelCountElement = document.getElementById(`${type}-panel-count`);
       if (panelCountElement) {
         panelCountElement.textContent = count;
       }
+    }
+  }
+
+  updatePageStats(stats) {
+    // 更新页面级统计信息
+    if (stats.avg_crawl_interval !== null) {
+      document.getElementById(
+        "pages-avg-interval"
+      ).textContent = `近${stats.data_count}次爬取平均耗时: ${stats.avg_crawl_interval}秒`;
+    } else {
+      document.getElementById(
+        "pages-avg-interval"
+      ).textContent = `近${stats.data_count}次爬取平均耗时: --`;
     }
   }
 
@@ -278,43 +258,6 @@ class DatabaseViewer {
       .replace(/\t/g, "\\t"); // 转义制表符
   }
 
-  // 虚拟滚动核心方法
-  renderVirtualRows(type) {
-    const vs = this.virtualScroll[type];
-    if (!vs.data.length) return;
-
-    const viewportHeight = vs.container.clientHeight;
-    const scrollTop = vs.container.scrollTop;
-
-    let startIndex = Math.floor(scrollTop / this.virtualScroll.rowHeight);
-    let endIndex =
-      startIndex + Math.ceil(viewportHeight / this.virtualScroll.rowHeight);
-
-    startIndex = Math.max(0, startIndex - this.virtualScroll.bufferRows);
-    endIndex = Math.min(
-      vs.data.length,
-      endIndex + this.virtualScroll.bufferRows
-    );
-
-    const visibleItems = vs.data.slice(startIndex, endIndex);
-
-    // 渲染可见行
-    vs.tbody.innerHTML = visibleItems
-      .map((item) => {
-        return type === "pages"
-          ? this.createPageRow(item)
-          : this.createChunkRow(item);
-      })
-      .join("");
-
-    // 设置偏移（考虑表头高度）
-    const headerHeight = vs.container.querySelector(
-      ".virtual-header-table"
-    ).offsetHeight;
-    const offset = headerHeight + startIndex * this.virtualScroll.rowHeight;
-    vs.tbody.parentElement.style.transform = `translateY(${offset}px)`;
-  }
-
   createPageRow(page) {
     return `
       <tr>
@@ -324,6 +267,7 @@ class DatabaseViewer {
     )}', '${this.escapeJsString(page.full_content)}', 'page')">${page.url}</td>
         <td class="content-cell" title="${page.content}">${page.content}</td>
         <td><span class="crawl-count">${page.crawl_count}</span></td>
+        <td><span class="process-count">${page.process_count}</span></td>
         <td>${this.formatDate(page.created_at)}</td>
         <td>${this.formatDate(page.updated_at)}</td>
       </tr>
