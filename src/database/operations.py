@@ -111,6 +111,25 @@ class DatabaseOperations:
         """)
         return (result['url'], result['content']) if result else None
 
+    async def get_next_process_url(self) -> Optional[tuple[str, str]]:
+        """Get URL and content with minimum process_count for next processing"""
+        result = await self.client.fetch_one("""
+            SELECT url, content FROM pages
+            WHERE process_count = (SELECT MIN(process_count) FROM pages)
+            ORDER BY created_at ASC
+            LIMIT 1
+        """)
+        return (result['url'], result['content']) if result else None
+
+    async def update_page_after_process(self, url: str) -> None:
+        """Increment process_count after processing"""
+        await self.client.execute_command("""
+            UPDATE pages
+            SET process_count = process_count + 1,
+                updated_at = NOW()
+            WHERE url = $1
+        """, url)
+
     async def update_page_after_crawl(self, url: str, content: str) -> None:
         """Update page content and increment crawl_count"""
         await self.client.execute_command("""

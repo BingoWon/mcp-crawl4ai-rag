@@ -78,23 +78,24 @@ class PostgreSQLClient:
             # Enable pgvector extension
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-            # Create pages table with crawl_count
+            # Create pages table with crawl_count and process_count
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS pages (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     url TEXT UNIQUE NOT NULL,
                     crawl_count INTEGER DEFAULT 0,
+                    process_count INTEGER DEFAULT 0,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     content TEXT NOT NULL
                 )
             """)
 
-            # Add crawl_count column if it doesn't exist (for existing tables)
+            # Add process_count column if it doesn't exist (for existing tables)
             try:
                 await conn.execute("""
                     ALTER TABLE pages
-                    ADD COLUMN IF NOT EXISTS crawl_count INTEGER DEFAULT 0
+                    ADD COLUMN IF NOT EXISTS process_count INTEGER DEFAULT 0
                 """)
             except Exception:
                 pass  # Column might already exist
@@ -113,6 +114,7 @@ class PostgreSQLClient:
             # Create indexes for performance
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_crawl_count ON pages(crawl_count)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_process_count ON pages(process_count)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_url ON chunks(url)")
     
     async def execute_query(self, query: str, *args) -> List[Dict[str, Any]]:

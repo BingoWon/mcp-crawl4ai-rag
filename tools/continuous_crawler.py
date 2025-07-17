@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Continuous Crawler - Simplified
-持续爬取器 - 极简版
+Unified Crawler System
+统一爬虫系统
 
-Continuously crawls Apple documentation and stores data to database.
-持续爬取Apple文档并存储数据到数据库。
+Continuously crawls Apple documentation with integrated processing:
+crawling, chunking, embedding, and storage.
+持续爬取Apple文档并集成处理：爬取、分块、嵌入和存储。
 """
 
 import sys
@@ -15,35 +16,40 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from crawler import IndependentCrawler
+from crawler.core import PureCrawler
+from processor.core import PureProcessor
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
-
 
 # Hyperparameter: Starting URL for crawling
 TARGET_URL = "https://developer.apple.com/documentation/"
 
 
 async def main():
-    """Continuous Apple documentation crawler with database-driven priority"""
-    logger.info("🚀 Database-Driven Continuous Crawler Starting")
+    """Unified crawler system with integrated crawling and processing"""
+    logger.info("🚀 Unified Crawler System Starting")
     logger.info(f"Target: {TARGET_URL}")
+    logger.info("Running integrated crawling and processing...")
 
     try:
-        async with IndependentCrawler() as crawler:
-            await crawler.start_infinite_crawl(TARGET_URL)
+        # Start both crawler and processor concurrently
+        async with PureCrawler() as crawler, PureProcessor() as processor:
+            await asyncio.gather(
+                crawler.start_infinite_crawl(TARGET_URL),
+                processor.start_infinite_process()
+            )
     except KeyboardInterrupt:
-        logger.info("Crawler interrupted by user")
+        logger.info("Unified system interrupted by user")
     except Exception as e:
-        logger.error(f"Crawler error: {e}")
+        logger.error(f"System error: {e}")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Crawler interrupted by user")
+        logger.info("System interrupted by user")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
