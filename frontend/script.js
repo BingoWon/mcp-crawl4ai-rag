@@ -269,7 +269,7 @@ class DatabaseViewer {
         <td><span class="crawl-count">${page.crawl_count}</span></td>
         <td><span class="process-count">${page.process_count}</span></td>
         <td>${this.formatDate(page.created_at)}</td>
-        <td>${this.formatDate(page.updated_at)}</td>
+        <td>${this.formatDate(page.last_crawled_at)}</td>
       </tr>
     `;
   }

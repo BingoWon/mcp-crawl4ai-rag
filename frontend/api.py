@@ -1,6 +1,39 @@
 #!/usr/bin/env python3
 """
-极简API接口 - 获取pages和chunks数据
+Database Viewer API
+数据库查看器API
+
+提供pages和chunks数据的查询接口，支持分页、排序、搜索和统计功能。
+
+=== 核心功能 ===
+
+**Pages接口 (/api/pages)**
+- 分页查询：支持page、size参数
+- 排序功能：支持多字段排序（id、url、crawl_count、process_count、created_at、last_crawled_at）
+- 搜索过滤：支持URL关键词搜索
+- 统计信息：提供爬取间隔时间统计
+
+**Chunks接口 (/api/chunks)**
+- 分页查询：支持page、size参数
+- 内容展示：显示chunk内容和相关URL信息
+
+**统计接口 (/api/stats)**
+- 页面统计：总数、有内容页面数、内容百分比
+- 处理统计：平均爬取次数、平均处理次数（仅有内容页面）
+- 精度控制：爬取和处理次数保留4位小数，百分比保留2位小数
+
+=== 爬取间隔时间统计 ===
+
+**计算逻辑：**
+- 数据过滤：只包含crawl_count > 0的页面（已实际爬取的页面）
+- 时间排序：按last_crawled_at升序排列确保时间顺序
+- 间隔计算：计算相邻记录的时间差（秒）
+- 平均值：所有时间间隔的算术平均值
+
+**业务价值：**
+- 排除未爬取页面：crawl_count = 0的页面只是记录等待爬取，不参与统计
+- 真实性能指标：反映实际爬取操作的时间间隔
+- 系统监控：帮助评估爬取频率和系统性能
 """
 
 import sys
@@ -41,8 +74,8 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
                 params.append(f"%{search}%")
 
             # 构建排序
-            valid_sorts = ["id", "url", "crawl_count", "process_count", "created_at", "updated_at"]
-            sort_column = sort if sort in valid_sorts else "updated_at"
+            valid_sorts = ["id", "url", "crawl_count", "process_count", "created_at", "last_crawled_at"]
+            sort_column = sort if sort in valid_sorts else "last_crawled_at"
             sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
             # 计算分页
@@ -57,7 +90,7 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
             limit_param = len(params) + 1
             offset_param = len(params) + 2
             query = f"""
-                SELECT id, url, content, crawl_count, process_count, created_at, updated_at
+                SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
                 FROM pages {where_clause}
                 ORDER BY {sort_column} {sort_order}
                 LIMIT ${limit_param} OFFSET ${offset_param}
@@ -65,16 +98,19 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
             params.extend([size, offset])
             pages = await client.fetch_all(query, *params)
 
-            # 计算平均爬取间隔时间
+            # 计算平均爬取间隔时间（只包含已爬取的页面）
             avg_crawl_interval = None
-            if len(pages) >= 2:
-                # 按updated_at排序（确保时间顺序）
-                sorted_pages = sorted(pages, key=lambda x: x["updated_at"])
+            # 过滤掉crawl_count为0的页面（未爬取的页面）
+            crawled_pages = [page for page in pages if page["crawl_count"] > 0]
+
+            if len(crawled_pages) >= 2:
+                # 按last_crawled_at排序（确保时间顺序）
+                sorted_pages = sorted(crawled_pages, key=lambda x: x["last_crawled_at"])
                 intervals = []
 
                 for i in range(1, len(sorted_pages)):
-                    prev_time = sorted_pages[i-1]["updated_at"]
-                    curr_time = sorted_pages[i]["updated_at"]
+                    prev_time = sorted_pages[i-1]["last_crawled_at"]
+                    curr_time = sorted_pages[i]["last_crawled_at"]
 
                     # 计算时间间隔（秒）
                     from datetime import datetime
@@ -108,7 +144,7 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
                     "crawl_count": page["crawl_count"],
                     "process_count": page["process_count"],
                     "created_at": page["created_at"],  # 数据库层已转换为ISO格式
-                    "updated_at": page["updated_at"]  # 数据库层已转换为ISO格式
+                    "last_crawled_at": page["last_crawled_at"]  # 数据库层已转换为ISO格式
                 })
 
             return JSONResponse({
@@ -122,7 +158,7 @@ async def get_pages(page: int = 1, size: int = 100, search: str = "",
                 },
                 "stats": {
                     "avg_crawl_interval": f"{avg_crawl_interval:.2f}" if avg_crawl_interval else None,
-                    "data_count": len(pages)
+                    "data_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
                 }
             })
     except Exception as e:

@@ -18,7 +18,7 @@ from database.client import PostgreSQLClient
 async def query_page_content(client: PostgreSQLClient, url: str):
     """查询pages表中的内容"""
     result = await client.fetch_one("""
-        SELECT url, content, crawl_count, created_at, updated_at
+        SELECT url, content, crawl_count, created_at, last_crawled_at
         FROM pages
         WHERE url = $1
     """, url)

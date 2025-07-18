@@ -9,14 +9,14 @@ High-level database operations for crawled content and RAG functionality.
 
 本模块实现了基于时间优先级的智能调度策略，最大化爬取和处理的业务价值：
 
-**爬取调度策略：优先选择最久未更新的页面**
+**爬取调度策略：优先选择最久未爬取的页面**
 - 核心原理：距离上次爬取时间越久，网站内容变动可能性越大
-- 调度逻辑：ORDER BY crawl_count ASC, updated_at ASC
+- 调度逻辑：ORDER BY crawl_count ASC, last_crawled_at ASC
 - 业务价值：最大化发现内容变更的概率，提高爬取资源利用效率
 
-**处理调度策略：优先选择最新更新的页面**
-- 核心原理：刚更新的内容最稳定，不太可能再次变动
-- 调度逻辑：ORDER BY process_count ASC, updated_at DESC
+**处理调度策略：优先选择最新爬取的页面**
+- 核心原理：刚爬取的内容最稳定，不太可能再次变动
+- 调度逻辑：ORDER BY process_count ASC, last_crawled_at DESC
 - 业务价值：避免处理后因内容变动而失去价值，确保处理投入的最大回报
 
 **策略协同效应：**
@@ -125,17 +125,18 @@ class DatabaseOperations:
         result = await self.client.fetch_one("""
             SELECT url, content FROM pages
             WHERE crawl_count = (SELECT MIN(crawl_count) FROM pages)
-            ORDER BY updated_at ASC
+            ORDER BY last_crawled_at ASC
             LIMIT 1
         """)
         return (result['url'], result['content']) if result else None
 
     async def get_next_process_url(self) -> Optional[tuple[str, str]]:
-        """Get URL and content with minimum process_count for next processing"""
+        """Get URL and content with minimum process_count for next processing (only pages with content)"""
         result = await self.client.fetch_one("""
             SELECT url, content FROM pages
-            WHERE process_count = (SELECT MIN(process_count) FROM pages)
-            ORDER BY updated_at DESC
+            WHERE process_count = (SELECT MIN(process_count) FROM pages WHERE content IS NOT NULL AND content != '')
+              AND content IS NOT NULL AND content != ''
+            ORDER BY last_crawled_at DESC
             LIMIT 1
         """)
         return (result['url'], result['content']) if result else None
@@ -144,8 +145,7 @@ class DatabaseOperations:
         """Increment process_count after processing"""
         await self.client.execute_command("""
             UPDATE pages
-            SET process_count = process_count + 1,
-                updated_at = NOW()
+            SET process_count = process_count + 1
             WHERE url = $1
         """, url)
 
@@ -155,7 +155,7 @@ class DatabaseOperations:
             UPDATE pages
             SET content = $2,
                 crawl_count = crawl_count + 1,
-                updated_at = NOW()
+                last_crawled_at = NOW()
             WHERE url = $1
         """, url, content)
 

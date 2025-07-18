@@ -86,10 +86,10 @@ class PureProcessor:
             try:
                 # Get next URL to process (minimum process_count)
                 result = await self.db_operations.get_next_process_url()
-                if not result:
-                    logger.info("No URLs to process")
-                    await asyncio.sleep(5)  # Wait before checking again
-                    continue
+                # if not result:
+                #     logger.info("No URLs to process")
+                #     await asyncio.sleep(3)  # Wait before checking again
+                #     continue
 
                 next_url, content = result
                 process_count += 1
@@ -97,6 +97,8 @@ class PureProcessor:
 
                 # Process the page content
                 await self._process_page_content(next_url, content)
+
+                await asyncio.sleep(2)  # TODO: Wait before checking again
 
             except KeyboardInterrupt:
                 logger.info("Processor interrupted by user")
