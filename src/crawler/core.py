@@ -66,11 +66,12 @@ class BatchCrawler:
     APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
 
     def __init__(self, batch_size: int = 5, max_concurrent: int = 3):
-        """Initialize pure crawler with batch configuration"""
+        """Initialize batch crawler with optimized connection pool"""
         self.batch_size = batch_size
         self.max_concurrent = max_concurrent
         self.db_client = None
         self.db_operations = None
+        self.crawler_pool = None
         
     async def __aenter__(self):
         """Async context manager entry"""
@@ -82,15 +83,27 @@ class BatchCrawler:
         await self.cleanup()
 
     async def initialize(self) -> None:
-        """Initialize database connections"""
-        logger.info("Initializing pure crawler")
+        """Initialize database connections and crawler pool"""
+        logger.info("Initializing batch crawler with persistent connection pool")
+
         # Initialize PostgreSQL client
         self.db_client = await get_database_client()
         self.db_operations = DatabaseOperations(self.db_client)
 
+        # Initialize persistent crawler pool
+        self.crawler_pool = CrawlerPool(pool_size=self.max_concurrent)
+        await self.crawler_pool.initialize()
+        logger.info(f"Persistent crawler pool initialized with {self.max_concurrent} instances")
+
     async def cleanup(self) -> None:
-        """Clean up resources"""
-        logger.info("Cleaning up crawler resources")
+        """Clean up resources including persistent crawler pool"""
+        logger.info("Cleaning up batch crawler resources")
+
+        # Close persistent crawler pool
+        if self.crawler_pool:
+            await self.crawler_pool.close()
+            self.crawler_pool = None
+            logger.info("Persistent crawler pool closed")
 
     def clean_and_normalize_url(self, url: str) -> str:
         """清洗和标准化URL - 移除锚点片段和末尾斜杠"""
@@ -144,27 +157,29 @@ class BatchCrawler:
                 continue
 
     async def _process_batch(self, batch_results: List[Tuple[str, str]]) -> None:
-        """简化的双重爬取批量处理"""
-        logger.info(f"Batch processing: {len(batch_results)} URLs with dual crawling")
+        """优化的双重爬取批量处理 - 使用持久连接池"""
+        logger.info(f"Batch processing: {len(batch_results)} URLs with persistent crawler pool")
 
-        async with CrawlerPool(pool_size=self.max_concurrent) as crawler:
-            all_tasks = []
+        if not self.crawler_pool:
+            raise RuntimeError("Crawler pool not initialized. Use async with statement.")
 
-            # 为每个URL创建两个任务：内容爬取 + 链接爬取
-            for url, _ in batch_results:
-                # 第一次爬取：带CSS选择器，获取内容
-                content_task = crawler.crawl_page(url, "#app-main")
-                all_tasks.append((url, content_task, "content"))
+        all_tasks = []
 
-                # 第二次爬取：不带CSS选择器，获取链接
-                links_task = crawler.crawl_page(url)
-                all_tasks.append((url, links_task, "links"))
+        # 为每个URL创建两个任务：内容爬取 + 链接爬取
+        for url, _ in batch_results:
+            # 第一次爬取：带CSS选择器，获取内容
+            content_task = self.crawler_pool.crawl_page(url, "#app-main")
+            all_tasks.append((url, content_task, "content"))
 
-            # 并发执行所有任务
-            results = await asyncio.gather(*[task for _, task, _ in all_tasks], return_exceptions=True)
+            # 第二次爬取：不带CSS选择器，获取链接
+            links_task = self.crawler_pool.crawl_page(url)
+            all_tasks.append((url, links_task, "links"))
 
-            # 处理结果
-            await self._save_dual_results(batch_results, results, all_tasks)
+        # 并发执行所有任务
+        results = await asyncio.gather(*[task for _, task, _ in all_tasks], return_exceptions=True)
+
+        # 处理结果
+        await self._save_dual_results(batch_results, results, all_tasks)
 
     async def _save_dual_results(self, batch_results: List[Tuple[str, str]],
                                crawl_results: List, all_tasks: List) -> None:
