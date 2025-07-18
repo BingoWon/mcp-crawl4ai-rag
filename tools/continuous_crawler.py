@@ -16,8 +16,8 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from crawler.core import PureCrawler
-from processor.core import PureProcessor
+from crawler.core import BatchCrawler
+from processor.core import ContentProcessor
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -34,10 +34,10 @@ async def main():
 
     try:
         # Start both crawler and processor concurrently
-        async with PureCrawler() as crawler, PureProcessor() as processor:
+        async with BatchCrawler(batch_size=10, max_concurrent=10) as crawler, ContentProcessor() as processor:
             await asyncio.gather(
-                crawler.start_infinite_crawl(TARGET_URL),
-                processor.start_infinite_process()
+                crawler.start_crawling(TARGET_URL),
+                # processor.start_processing()
             )
     except KeyboardInterrupt:
         logger.info("Unified system interrupted by user")
