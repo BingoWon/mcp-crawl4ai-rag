@@ -86,19 +86,27 @@ class PostgreSQLClient:
                     crawl_count INTEGER DEFAULT 0,
                     process_count INTEGER DEFAULT 0,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    last_crawled_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     content TEXT NOT NULL
                 )
             """)
 
-            # Add process_count column if it doesn't exist (for existing tables)
+            # Migrate existing tables to new schema
             try:
+                # Add process_count column if it doesn't exist
                 await conn.execute("""
                     ALTER TABLE pages
                     ADD COLUMN IF NOT EXISTS process_count INTEGER DEFAULT 0
                 """)
+
+                # Rename updated_at to last_crawled_at if needed
+                await conn.execute("""
+                    ALTER TABLE pages
+                    RENAME COLUMN updated_at TO last_crawled_at
+                """)
             except Exception:
-                pass  # Column might already exist
+                # Column might already be renamed
+                pass
 
             # Create chunks table
             await conn.execute("""
