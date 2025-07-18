@@ -11,7 +11,7 @@ from datetime import datetime
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from crawler.core import PureCrawler
+from crawler.core import BatchCrawler
 from chunking import SmartChunker
 
 
@@ -27,15 +27,15 @@ async def test_apple_metal_chunking():
     try:
         # 初始化组件
         print("📦 初始化组件...")
-        crawler = PureCrawler()
+        crawler = BatchCrawler()
         chunker = SmartChunker()
         
         # 爬取页面
         print("🕷️ 爬取页面内容...")
         async with crawler:
-            from crawler.apple_stealth_crawler import AppleStealthCrawler
-            async with AppleStealthCrawler() as stealth_crawler:
-                clean_content, links = await stealth_crawler.extract_content_and_links(url, "#app-main")
+            from crawler.apple_stealth_crawler import CrawlerPool
+            async with CrawlerPool() as stealth_crawler:
+                clean_content, _ = await stealth_crawler.crawl_page(url, "#app-main")
 
         if not clean_content:
             print("❌ 爬取失败或内容为空")

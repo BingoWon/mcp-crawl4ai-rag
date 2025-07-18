@@ -52,8 +52,8 @@ import asyncio
 logger = setup_logger(__name__)
 
 
-class PureProcessor:
-    """Pure processor component - only content processing and chunks storage"""
+class ContentProcessor:
+    """内容处理器，专注于分块和嵌入处理"""
 
     def __init__(self):
         self.db_client = None
@@ -77,15 +77,15 @@ class PureProcessor:
         """Clean up resources"""
         logger.info("Cleaning up processor resources")
 
-    async def start_infinite_process(self) -> None:
-        """Start infinite processing loop based on process_count priority"""
+    async def start_processing(self) -> None:
+        """开始内容处理循环"""
         logger.info("Starting pure processor")
 
         process_count = 0
         while True:
             try:
                 # Get next URL to process (minimum process_count)
-                result = await self.db_operations.get_next_process_url()
+                result = await self.db_operations.get_process_url()
                 # if not result:
                 #     logger.info("No URLs to process")
                 #     await asyncio.sleep(3)  # Wait before checking again
@@ -96,9 +96,7 @@ class PureProcessor:
                 logger.info(f"=== Process #{process_count}: {next_url} ===")
 
                 # Process the page content
-                await self._process_page_content(next_url, content)
-
-                await asyncio.sleep(2)  # TODO: Wait before checking again
+                await self._process_content(next_url, content)
 
             except KeyboardInterrupt:
                 logger.info("Processor interrupted by user")
@@ -107,14 +105,14 @@ class PureProcessor:
                 logger.error(f"Process error: {e}")
                 continue
 
-    async def _process_page_content(self, url: str, content: str) -> None:
-        """Process single page content: chunking + embedding + storage"""
+    async def _process_content(self, url: str, content: str) -> None:
+        """处理页面内容：分块 + 嵌入 + 存储"""
         logger.info(f"Processing content for: {url}")
 
         # Skip if no content
         if not content.strip():
             logger.error(f"❌ No content to process for {url}")
-            await self.db_operations.update_page_after_process(url)
+            await self.db_operations.update_process_count(url)
             return
 
         # Delete old chunks for this URL
@@ -124,7 +122,7 @@ class PureProcessor:
         chunks = self.chunker.chunk_text(content)
         if not chunks:
             logger.error(f"❌ No chunks generated for {url}")
-            await self.db_operations.update_page_after_process(url)
+            await self.db_operations.update_process_count(url)
             return
 
         # Validate chunk lengths
@@ -148,12 +146,12 @@ class PureProcessor:
 
         if not data_to_insert:
             logger.error(f"❌ No data to insert for {url}")
-            await self.db_operations.update_page_after_process(url)
+            await self.db_operations.update_process_count(url)
             return
 
         # Insert chunks and update process count
         await self.db_operations.insert_chunks(data_to_insert)
-        await self.db_operations.update_page_after_process(url)
+        await self.db_operations.update_process_count(url)
 
         logger.info(f"✅ Processed {url}: {len(chunks)} chunks created")
 
@@ -163,8 +161,8 @@ async def main():
     logger.info("🚀 Pure Processor Starting")
 
     try:
-        async with PureProcessor() as processor:
-            await processor.start_infinite_process()
+        async with ContentProcessor() as processor:
+            await processor.start_processing()
     except KeyboardInterrupt:
         logger.info("Processor interrupted by user")
     except Exception as e:

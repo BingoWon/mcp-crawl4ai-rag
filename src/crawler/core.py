@@ -1,62 +1,74 @@
 """
-Pure Crawler Core
-纯爬取器核心模块
+BatchCrawler - 简化双重爬取批量爬虫
+批量并发网页爬虫，采用简化的双重爬取策略
 
-专注于网页爬取和智能链接发现的独立组件，是统一爬虫系统的爬取引擎。
+专注于高效的批量网页爬取和完整链接发现的独立组件，是统一爬虫系统的核心爬取引擎。
 
-=== 统一爬虫系统架构 ===
+=== 简化双重爬取架构 ===
 
-本模块是统一爬虫系统的核心组件之一，与处理器组件协同工作：
+本模块实现了简化的双重爬取策略，确保逻辑清晰和完整覆盖：
+
+**核心策略：**
+- 统一双重爬取：每个URL都进行两次爬取，无例外
+- 第一次爬取：带CSS选择器("#app-main")，专门获取页面核心内容
+- 第二次爬取：不带CSS选择器，专门获取完整页面链接
+- 并发执行：所有爬取任务并发处理，最大化性能
 
 **系统架构：**
-- 统一入口：tools/continuous_crawler.py 并发运行爬取器和处理器
-- 职责分离：爬取器专注爬取，处理器专注分块嵌入
-- 数据库协调：通过 crawl_count 和 process_count 实现智能调度
+- 统一入口：tools/continuous_crawler.py 运行批量爬取器
+- 职责分离：爬取器专注内容和链接获取，处理器专注分块嵌入
+- 数据库协调：通过 crawl_count 实现智能调度
+- 连接池复用：复用浏览器实例，减少启动开销
 
 **爬取器职责：**
-- 网页内容爬取和存储到 pages 表
-- 智能链接发现和新URL存储
+- 批量网页内容爬取和存储到 pages 表
+- 完整链接发现和新URL存储
 - crawl_count 计数管理
 
-=== 智能链接发现策略 ===
+=== 双重爬取策略详解 ===
 
-**核心优化：基于内容状态的智能决策**
-- 智能判断：根据页面是否已有内容决定链接发现策略
-- 性能优化：避免在空内容页面执行无意义的链接提取
-- 双重爬取：需要更多URL时进行第二次爬取获得最大链接覆盖
+**策略设计原理：**
+- 内容获取：使用CSS选择器过滤，获取页面核心内容用于存储和处理
+- 链接发现：不使用CSS选择器，获取完整页面所有链接用于URL池扩展
+- 职责分离：内容和链接获取完全独立，避免相互干扰
+- 覆盖完整：确保每个页面的内容和链接都被完整获取
 
-**实现逻辑：**
-1. 获取最小 crawl_count 的页面和其内容状态
-2. 智能决策：need_more_urls = bool(existing_content)
-3. 执行爬取：_crawl_and_store_page(url, need_more_urls)
-4. 条件链接发现：仅在 need_more_urls=True 时进行双重爬取
+**批量处理流程：**
+1. 批量获取：一次获取多个最小 crawl_count 的页面
+2. 任务创建：为每个URL创建内容爬取和链接爬取两个任务
+3. 并发执行：使用连接池并发处理所有任务
+4. 结果分离：分别处理内容结果和链接结果
+5. 批量存储：批量更新数据库，减少I/O开销
 
-**性能收益：**
-- 减少不必要的网络请求和链接提取操作
-- 优化爬取策略，提高系统整体效率
-- 智能资源分配，避免浪费计算资源
+**性能特点：**
+- 逻辑简单：无复杂条件判断，易于理解和维护
+- 覆盖完整：每个URL都进行完整的内容和链接获取
+- 并发高效：连接池复用 + 批量并发处理
+- 数据库优化：批量操作减少数据库交互次数
 """
 
-from typing import Optional
+from typing import List, Tuple
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import get_database_client, DatabaseOperations
-from .apple_stealth_crawler import AppleStealthCrawler
+from .apple_stealth_crawler import CrawlerPool
 from utils.logger import setup_logger
 import asyncio
 
 logger = setup_logger(__name__)
 
 
-class PureCrawler:
-    """Pure crawler component - only crawling and pages storage"""
+class BatchCrawler:
+    """批量并发网页爬虫，专注于高效的批量爬取和链接发现"""
 
     # Apple文档URL常量
     APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
 
-    def __init__(self):
-        """Initialize the pure crawler"""
+    def __init__(self, batch_size: int = 5, max_concurrent: int = 3):
+        """Initialize pure crawler with batch configuration"""
+        self.batch_size = batch_size
+        self.max_concurrent = max_concurrent
         self.db_client = None
         self.db_operations = None
         
@@ -65,7 +77,7 @@ class PureCrawler:
         await self.initialize()
         return self
         
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, _exc_type, _exc_val, _exc_tb):
         """Async context manager exit"""
         await self.cleanup()
 
@@ -96,8 +108,8 @@ class PureCrawler:
         return urlunparse(normalized_parsed)
 
 
-    async def start_infinite_crawl(self, start_url: str) -> None:
-        """Start infinite crawl loop based on crawl_count priority"""
+    async def start_crawling(self, start_url: str) -> None:
+        """开始批量爬取循环"""
         if not self.db_operations:
             raise RuntimeError("Crawler not initialized. Use async with statement.")
 
@@ -107,67 +119,92 @@ class PureCrawler:
 
         # Insert start URL if not exists
         await self.db_operations.insert_url_if_not_exists(start_url)
-        logger.info(f"Starting pure crawler from: {start_url}")
+        logger.info(f"Starting batch crawler from: {start_url} (batch_size={self.batch_size}, max_concurrent={self.max_concurrent})")
 
-        crawl_count = 0
+        batch_count = 0
         while True:
             try:
-                # Get next URL and content to crawl (minimum crawl_count)
-                result = await self.db_operations.get_next_crawl_url()
-                if not result:
+                # Get batch of URLs and content to crawl (minimum crawl_count)
+                batch_results = await self.db_operations.get_urls_batch(self.batch_size)
+                if not batch_results:
                     logger.info("No URLs to crawl")
                     break
 
-                next_url, existing_content = result
-                crawl_count += 1
-                logger.info(f"=== Crawl #{crawl_count}: {next_url} ===")
+                batch_count += 1
+                logger.info(f"=== Batch #{batch_count}: Processing {len(batch_results)} URLs ===")
 
-                # Intelligent link discovery strategy based on content status
-                need_more_urls = bool(existing_content)  # 有内容说明需要发现更多URL
-                await self._crawl_and_store_page(next_url, need_more_urls)
+                # Process batch concurrently
+                await self._process_batch(batch_results)
 
             except KeyboardInterrupt:
-                logger.info("Crawl interrupted by user")
+                logger.info("Batch crawl interrupted by user")
                 break
             except Exception as e:
-                logger.error(f"Crawl error: {e}")
+                logger.error(f"Batch crawl error: {e}")
                 continue
 
-    async def _crawl_and_store_page(self, url: str, need_more_urls: bool = False) -> None:
-        """Crawl single URL and store page content with intelligent link discovery"""
-        logger.info(f"Crawling URL: {url}")
+    async def _process_batch(self, batch_results: List[Tuple[str, str]]) -> None:
+        """简化的双重爬取批量处理"""
+        logger.info(f"Batch processing: {len(batch_results)} URLs with dual crawling")
 
-        async with AppleStealthCrawler() as crawler:
-            # Crawl content and links
-            content = ""
-            links_data = None
-            for i in range(3):
-                content, links_data = await crawler.extract_content_and_links(url, "#app-main")
-                if content:
-                    break
-                if i == 2:
-                    logger.error(f"❌ No content crawled for {url}")
-                    break
-                else:
-                    logger.error(f"❌ No content crawled for {url}, retrying...")
-                    await asyncio.sleep(1)
+        async with CrawlerPool(pool_size=self.max_concurrent) as crawler:
+            all_tasks = []
 
-            # Update page content and crawl_count
-            await self.db_operations.update_page_after_crawl(url, content)
+            # 为每个URL创建两个任务：内容爬取 + 链接爬取
+            for url, _ in batch_results:
+                # 第一次爬取：带CSS选择器，获取内容
+                content_task = crawler.crawl_page(url, "#app-main")
+                all_tasks.append((url, content_task, "content"))
 
-            # Intelligent link discovery strategy
-            if need_more_urls:
-                # Double crawl for maximum link coverage when we need more URLs
-                logger.info("Need more URLs: performing double crawl for link discovery")
-                _, links_data = await crawler.extract_content_and_links(url)
+                # 第二次爬取：不带CSS选择器，获取链接
+                links_task = crawler.crawl_page(url)
+                all_tasks.append((url, links_task, "links"))
 
-            # Process discovered links
-            extracted_links = self._extract_links_from_data(links_data)
-            if extracted_links:
-                await self._store_discovered_links(extracted_links)
-                logger.info(f"✅ Crawled {url}: {len(extracted_links)} new links discovered")
-            else:
-                logger.info(f"✅ Crawled {url}: no links discovered")
+            # 并发执行所有任务
+            results = await asyncio.gather(*[task for _, task, _ in all_tasks], return_exceptions=True)
+
+            # 处理结果
+            await self._save_dual_results(batch_results, results, all_tasks)
+
+    async def _save_dual_results(self, batch_results: List[Tuple[str, str]],
+                               crawl_results: List, all_tasks: List) -> None:
+        """保存双重爬取结果到数据库"""
+        url_content_pairs = []
+        all_discovered_links = []
+
+        # 按任务类型分组处理结果
+        content_results = {}
+
+        for i, (url, _, task_type) in enumerate(all_tasks):
+            result = crawl_results[i]
+            if isinstance(result, Exception):
+                logger.error(f"❌ Failed to crawl {url} ({task_type}): {result}")
+                continue
+
+            if task_type == "content":
+                content, _ = result
+                content_results[url] = content
+            elif task_type == "links":
+                _, links_data = result
+                if links_data:
+                    extracted_links = self._extract_links_from_data(links_data)
+                    all_discovered_links.extend(extracted_links)
+
+        # 准备内容更新数据
+        for url, _ in batch_results:
+            content = content_results.get(url, "")
+            url_content_pairs.append((url, content))
+
+        # 批量更新数据库
+        if url_content_pairs:
+            await self.db_operations.update_pages_batch(url_content_pairs)
+
+        # 存储发现的链接
+        if all_discovered_links:
+            await self._store_discovered_links(all_discovered_links)
+            logger.info(f"✅ Batch processed: {len(url_content_pairs)} pages, {len(all_discovered_links)} new links discovered")
+        else:
+            logger.info(f"✅ Batch processed: {len(url_content_pairs)} pages, no new links discovered")
 
     async def _store_discovered_links(self, links: list[str]) -> None:
         """Store discovered links to database if not exists"""
