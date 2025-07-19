@@ -1,9 +1,31 @@
 """
-PostgreSQL Client
-PostgreSQL客户端
+PostgreSQL Client - Modern Async Database Interface
 
-Modern async PostgreSQL client with pgvector support.
-现代化异步PostgreSQL客户端，支持pgvector。
+This module provides a high-performance async PostgreSQL client optimized for
+vector operations and Apple Developer Documentation storage.
+
+Features:
+- Async connection pool management with asyncpg
+- pgvector extension support for vector similarity search
+- Optimized for Apple Developer Documentation schema
+- JSON-serializable result formatting
+- Comprehensive error handling and logging
+- Connection pool optimization for MCP server usage
+
+Database Schema Support:
+- pages: Full page content with metadata (id, url, content, crawl_count)
+- chunks: Document fragments with embeddings (id, url, content, embedding)
+- pgvector: Vector similarity operations with cosine distance
+
+Performance:
+- Connection pooling for optimal resource usage
+- Async-first design for high concurrency
+- Efficient vector operations with proper type handling
+- Automatic serialization of UUID and datetime objects
+
+Usage:
+Provides execute_query() method for parameterized SQL execution with
+automatic result serialization and comprehensive error handling.
 """
 
 import asyncpg

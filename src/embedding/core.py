@@ -1,9 +1,32 @@
 """
-Embedding Core
-嵌入核心
+Embedding Core - Unified Embedding Interface
 
-Process-safe unified embedding interfaces and factory system.
-进程安全的统一嵌入接口和工厂系统。
+This module provides a process-safe, unified embedding interface supporting both
+local and API-based embedding generation for the MCP RAG server.
+
+Features:
+- Qwen3-Embedding-4B local model with Apple Silicon MPS optimization
+- SiliconFlow API integration for cloud-based embedding generation
+- Process-safe singleton pattern with thread-local storage
+- Automatic model selection and fallback mechanisms
+- Hardcoded normalization for consistent vector representations
+- 2560-dimension embeddings optimized for Apple Developer Documentation
+
+Architecture:
+- Abstract EmbeddingProvider base class for extensibility
+- LocalEmbeddingProvider: Uses transformers with MPS acceleration
+- SiliconFlowProvider: HTTP API client for cloud embedding service
+- Factory pattern with automatic provider selection based on configuration
+
+Performance:
+- Lazy loading for optimal memory usage
+- Thread-safe model initialization
+- Efficient batch processing capabilities
+- Apple Silicon MPS acceleration for local inference
+
+Usage:
+Call create_embedding(text) to generate normalized 2560-dimension vectors
+suitable for pgvector cosine similarity search.
 """
 
 import os
