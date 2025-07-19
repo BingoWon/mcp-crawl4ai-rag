@@ -119,10 +119,10 @@ class DatabaseOperations:
         """)
 
     async def insert_url_if_not_exists(self, url: str) -> bool:
-        """Insert URL with crawl_count=0 if not exists. Returns True if inserted."""
+        """Insert URL with crawl_count=0 and last_crawled_at=NULL if not exists. Returns True if inserted."""
         result = await self.client.execute_command("""
-            INSERT INTO pages (url, crawl_count, content)
-            VALUES ($1, 0, '')
+            INSERT INTO pages (url, crawl_count, content, last_crawled_at)
+            VALUES ($1, 0, '', NULL)
             ON CONFLICT (url) DO NOTHING
         """, url)
         return "INSERT 0 1" in result

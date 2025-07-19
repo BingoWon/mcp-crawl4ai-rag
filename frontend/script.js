@@ -33,7 +33,7 @@ class DatabaseViewer {
     try {
       const currentPage = page || this.pagination.pages.page;
       const response = await fetch(
-        `${this.apiBase}/pages?page=${currentPage}&size=${this.pagination.pages.size}&sort=updated_at&order=desc`
+        `${this.apiBase}/pages?page=${currentPage}&size=${this.pagination.pages.size}&sort=created_at&order=desc`
       );
       const result = await response.json();
 
@@ -199,6 +199,9 @@ class DatabaseViewer {
       document.getElementById(
         "pages-avg-process"
       ).textContent = `平均处理次数: ${stats.avg_process_count}`;
+      document.getElementById(
+        "pages-anomalous"
+      ).textContent = `内容长度异常: ${stats.anomalous_pages}`;
     } else if (type === "chunks") {
       // chunks保持原有显示方式
       const panelCountElement = document.getElementById(`${type}-panel-count`);
