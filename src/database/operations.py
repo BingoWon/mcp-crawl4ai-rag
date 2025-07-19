@@ -89,15 +89,16 @@ class DatabaseOperations:
     
     async def search_documents_vector(self, query_embedding: List[float],
                                     match_count: int = 10) -> List[Dict[str, Any]]:
-        """Vector similarity search in crawled_pages"""
+        """Vector similarity search in chunks"""
+        vector_str = str(query_embedding)
         return await self.client.execute_query("""
             SELECT id, url, content,
                    1 - (embedding <=> $1::vector) as similarity
-            FROM crawled_pages
+            FROM chunks
             WHERE embedding IS NOT NULL
             ORDER BY embedding <=> $1::vector
             LIMIT $2
-        """, query_embedding, match_count)
+        """, vector_str, match_count)
     
     async def search_documents_keyword(self, query: str,
                                      match_count: int = 10) -> List[Dict[str, Any]]:

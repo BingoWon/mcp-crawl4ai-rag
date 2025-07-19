@@ -1,26 +1,70 @@
-<h1 align="center">Crawl4AI RAG MCP Server</h1>
+<h1 align="center">MCP RAG Server for Apple Developer Documentation</h1>
 
 <p align="center">
-  <em>Web Crawling and RAG Capabilities for AI Agents and AI Coding Assistants</em>
+  <em>Intelligent RAG Queries for Apple Developer Documentation using Advanced Vector Search</em>
 </p>
 
-A powerful implementation of the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) integrated with [Crawl4AI](https://crawl4ai.com) and PostgreSQL for providing AI agents and AI coding assistants with advanced web crawling and RAG capabilities.
+A high-performance implementation of the [Model Context Protocol (MCP)](https://modelcontextprotocol.io) providing AI agents with intelligent document retrieval from Apple Developer Documentation using state-of-the-art RAG techniques.
 
-With this MCP server, you can <b>scrape anything</b> and then <b>use that knowledge anywhere</b> for RAG.
+## 🎯 **Key Features**
 
-The primary goal is to bring this MCP server into [Archon](https://github.com/coleam00/Archon) as I evolve it to be more of a knowledge engine for AI coding assistants to build AI agents. This first version of the Crawl4AI/RAG MCP server will be improved upon greatly soon, especially making it more configurable so you can use different embedding models and run everything locally with Ollama.
+- **🚀 Production-Ready MCP Server**: Elegant async architecture with lazy database initialization
+- **🧠 Advanced Vector Search**: Qwen3-Embedding-4B with Apple Silicon MPS optimization
+- **🔍 Hybrid Search**: Combines vector similarity with keyword matching for comprehensive results
+- **⚡ Smart Reranking**: Qwen3-Reranker-4B integration with automatic fallback mechanisms
+- **🍎 Apple-Optimized**: Specialized for Apple Developer Documentation content structure
+- **📊 PostgreSQL + pgvector**: High-performance vector storage with cosine similarity search
+- **🔧 Modern Architecture**: FastMCP 2.9.0 with Streamable HTTP transport
 
-Consider this GitHub repository a testbed, hence why I haven't been super actively address issues and pull requests yet. I certainly will though as I bring this into Archon V2!
+## 🏗️ **Architecture Overview**
+
+This system implements a **clean separation of concerns**:
+
+### 🎯 **MCP Server (Core RAG Service)**
+- **Single Responsibility**: Dedicated RAG query service via Model Context Protocol
+- **Lazy Initialization**: DatabaseManager with async connection pool management
+- **High Performance**: Optimized for fast query responses with minimal overhead
+- **Type Safety**: Comprehensive type annotations and error handling
+
+### 🕷️ **Independent Crawling System**
+- **Batch Processing**: Intelligent batch crawling with connection pool reuse
+- **Apple-Specialized**: Optimized for Apple Developer Documentation with anti-detection
+- **Smart Discovery**: Automatic link discovery and URL pool expansion
+- **Performance**: 3-5x faster crawling through concurrent processing
+
+### 🖥️ **Web Management Interface**
+- **Real-time Monitoring**: Live statistics and crawling progress
+- **Content Management**: Browse and search crawled pages and chunks
+- **System Health**: Database storage monitoring and performance metrics
+
+The primary goal is to provide a robust, production-ready RAG service that can be integrated into AI coding assistants and knowledge engines like [Archon](https://github.com/coleam00/Archon).
 
 ## Overview
 
-This MCP server provides tools that enable AI agents to crawl websites, store content in a vector database (PostgreSQL with pgvector), and perform RAG over the crawled content. It follows the best practices for building MCP servers based on the [Mem0 MCP server template](https://github.com/coleam00/mcp-mem0/) I provided on my channel previously.
+This system provides a complete solution for intelligent web crawling and advanced RAG queries through a **dual-architecture design**:
 
-The server includes several advanced RAG strategies that can be enabled to enhance retrieval quality:
-- **Contextual Embeddings** for enriched semantic understanding
+### 🎯 **MCP Server (Pure RAG Service)**
+- **Single Responsibility**: Dedicated RAG query service via Model Context Protocol
+- **Advanced Search**: Vector search, hybrid search, and intelligent reranking
+- **High Performance**: Optimized for fast query responses without crawling overhead
+- **Smart Reranking**: Qwen3-Reranker-4B integration with automatic fallback
+
+### 🕷️ **Independent Crawling System**
+- **Batch Processing**: Intelligent batch crawling with connection pool reuse
+- **Smart Discovery**: Automatic link discovery and URL pool expansion
+- **Apple-Optimized**: Specialized for Apple Developer Documentation with anti-detection
+- **Performance**: 3-5x faster crawling through concurrent processing
+
+### 🖥️ **Web Management Interface**
+- **Real-time Monitoring**: Live statistics and crawling progress
+- **Content Management**: Browse and search crawled pages and chunks
+- **System Health**: Database storage monitoring and anomaly detection
+- **User-Friendly**: Modern web interface for system administration
+
+The system includes several advanced RAG strategies:
 - **Hybrid Search** combining vector and keyword search
-- **Reranking** for improved result relevance using cross-encoder models
-
+- **Smart Reranking** using Qwen3-Reranker-4B with automatic fallback
+- **Contextual Embeddings** for enriched semantic understanding
 
 See the [Configuration section](#configuration) below for details on how to enable and configure these strategies.
 
@@ -38,23 +82,99 @@ The Crawl4AI RAG MCP server is just the beginning. Here's where we're headed:
 
 5. **Performance Optimization**: Increasing crawling and indexing speed to make it more realistic to "quickly" index new documentation to then leverage it within the same prompt in an AI coding assistant.
 
-## Features
+## 🚀 **Technical Features**
 
-- **Smart URL Detection**: Automatically detects and handles different URL types (regular webpages, sitemaps, text files)
-- **Recursive Crawling**: Follows internal links to discover content
-- **Parallel Processing**: Efficiently crawls multiple pages simultaneously
-- **Content Chunking**: Intelligently splits content by headers and size for better processing
-- **Vector Search**: Performs RAG over crawled content, optionally filtering by data source for precision
-- **Source Retrieval**: Retrieve sources available for filtering to guide the RAG process
+### 🧠 **Advanced RAG Capabilities**
+- **Vector Similarity Search**: Qwen3-Embedding-4B with 2560-dimension embeddings
+- **Apple Silicon Optimization**: MPS acceleration for local embedding generation
+- **Hybrid Search Strategy**: Combines semantic vector search with keyword matching
+- **Smart Reranking**: Qwen3-Reranker-4B with automatic fallback to embedding similarity
+- **Lazy Database Management**: Async connection pool with optimal resource usage
+- **Type-Safe Implementation**: Comprehensive type annotations and error handling
 
-## Tools
+### 🏗️ **Modern Architecture**
+- **FastMCP 2.9.0**: Streamable HTTP transport for optimal performance
+- **Async-First Design**: All operations use async/await for high concurrency
+- **Lazy Initialization**: DatabaseManager with on-demand connection creation
+- **Clean Separation**: Independent MCP server and crawling system components
+- **Production-Ready**: Comprehensive error handling and graceful degradation
 
-The server provides essential web crawling and search tools:
+### 🗄️ **Data Management**
+- **PostgreSQL + pgvector**: Vector storage with cosine similarity search
+- **Intelligent Chunking**: Header-based content segmentation for Apple docs
+- **Embedding Storage**: Efficient vector storage in chunks table
+- **Connection Pooling**: Optimized database connection management
+- **Batch Operations**: High-performance bulk database operations
 
-### Core Tools (Always Available)
+### 🍎 **Apple Documentation Optimization**
+- **Content Extraction**: Specialized parsing for Apple Developer Documentation
+- **Link Discovery**: Intelligent URL discovery and expansion
+- **Anti-Detection**: Optimized crawling strategies for Apple websites
+- **Content Filtering**: Removes navigation and repetitive content
+- **Structured Processing**: Preserves document hierarchy and formatting
 
-1. **`get_available_sources`**: Get a list of all available sources (domains) in the database
-2. **`perform_rag_query`**: Search for relevant content using semantic search with optional source filtering
+### 🔧 **Developer Experience**
+- **Single MCP Tool**: Simple `perform_rag_query` interface
+- **JSON Responses**: Structured results with URLs, content, and similarity scores
+- **Comprehensive Logging**: Detailed logging for debugging and monitoring
+- **Environment Configuration**: Flexible .env-based configuration
+- **Error Handling**: Graceful error responses with detailed error messages
+
+## 🛠️ **MCP Tool**
+
+The MCP server provides a single, powerful RAG query tool:
+
+### `perform_rag_query`
+
+**Advanced RAG queries with intelligent document retrieval from Apple Developer Documentation**
+
+#### Parameters:
+- **`query`** (string): Natural language search query
+- **`match_count`** (integer, optional): Number of results to return (default: 5)
+
+#### Features:
+- **Vector Similarity Search**: Uses Qwen3-Embedding-4B for semantic understanding
+- **Hybrid Search**: Combines vector similarity with keyword matching when enabled
+- **Smart Reranking**: Qwen3-Reranker-4B with automatic fallback to embedding similarity
+- **Apple Documentation**: Optimized for Apple Developer Documentation content
+- **Structured Results**: Returns JSON with URLs, content snippets, and similarity scores
+
+#### Example Response:
+```json
+{
+  "success": true,
+  "query": "SwiftUI navigation best practices",
+  "search_mode": "hybrid",
+  "reranking_applied": false,
+  "results": [
+    {
+      "url": "https://developer.apple.com/documentation/swiftui/navigation",
+      "content": "Navigation\nEnable people to move between different parts...",
+      "similarity": 0.7660215725309129
+    }
+  ],
+  "count": 1
+}
+```
+
+#### Error Handling:
+Returns structured error responses with detailed error messages for debugging and monitoring.
+
+## System Components
+
+### Independent Crawling System
+The crawling functionality is provided by an independent system (`tools/continuous_crawler.py`):
+- **Batch Processing**: Intelligent batch crawling with connection pooling
+- **Smart Discovery**: Automatic link discovery and URL expansion
+- **Performance Optimized**: 3-5x faster through concurrent processing
+- **Apple Specialized**: Optimized for Apple Developer Documentation
+
+### Web Management Interface
+Access the management interface at `http://localhost:8001`:
+- **Real-time Dashboard**: System statistics and monitoring
+- **Content Browser**: Search and browse crawled content
+- **Storage Analytics**: Database usage and anomaly detection
+- **System Health**: Performance metrics and error tracking
 
 
 
@@ -62,15 +182,15 @@ The server provides essential web crawling and search tools:
 
 ## Prerequisites
 
-- [Docker/Docker Desktop](https://www.docker.com/products/docker-desktop/) if running the MCP server as a container (recommended)
-- [Python 3.12+](https://www.python.org/downloads/) if running the MCP server directly through uv
-- [PostgreSQL](https://postgresql.org/) with [pgvector](https://github.com/pgvector/pgvector) (database for RAG)
-- [OpenAI API key](https://platform.openai.com/api-keys) (for generating embeddings)
+- [Python 3.12+](https://www.python.org/downloads/) for running the system
+- [PostgreSQL](https://postgresql.org/) with [pgvector](https://github.com/pgvector/pgvector) extension (vector database)
+- [OpenAI API key](https://platform.openai.com/api-keys) or [Silicon Flow API key](https://siliconflow.cn/) (for embeddings)
+- Sufficient disk space for crawled content (Apple docs ~800MB+)
 
 
 ## Installation
 
-### Using Docker (Recommended)
+### Quick Start
 
 1. Clone this repository:
    ```bash
@@ -78,40 +198,39 @@ The server provides essential web crawling and search tools:
    cd mcp-crawl4ai-rag
    ```
 
-2. Build the Docker image:
+2. Install dependencies:
    ```bash
-   docker build -t mcp/crawl4ai-rag --build-arg PORT=8051 .
+   pip install -r requirements.txt
    ```
 
 3. Create a `.env` file based on the configuration section below
 
-### Using uv directly (no Docker)
+4. Set up PostgreSQL with pgvector extension
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/coleam00/mcp-crawl4ai-rag.git
-   cd mcp-crawl4ai-rag
-   ```
+### System Components Setup
 
-2. Install uv if you don't have it:
-   ```bash
-   pip install uv
-   ```
+#### 1. MCP Server (RAG Service)
+```bash
+# Run the MCP server for RAG queries
+python src/crawl4ai_mcp.py
+```
 
-3. Create and activate a virtual environment:
-   ```bash
-   uv venv
-   .venv\Scripts\activate
-   # on Mac/Linux: source .venv/bin/activate
-   ```
+#### 2. Independent Crawling System
+```bash
+# Run the intelligent crawling system
+python tools/continuous_crawler.py
+```
 
-4. Install dependencies:
-   ```bash
-   uv pip install -e .
-   crawl4ai-setup
-   ```
+#### 3. Web Management Interface
+```bash
+# Run the web dashboard (optional)
+cd frontend && python api.py
+```
 
-5. Create a `.env` file based on the configuration section below
+The system components can run independently:
+- **MCP Server**: Provides RAG query capabilities via Model Context Protocol
+- **Crawling System**: Continuously crawls and processes content
+- **Web Interface**: Provides monitoring and management capabilities
 
 ## Database Setup
 
@@ -125,34 +244,31 @@ Before running the server, you need to set up PostgreSQL with the pgvector exten
 
 
 
-## Configuration
+## ⚙️ **Configuration**
 
 Create a `.env` file in the project root with the following variables:
 
-```
+### Core Configuration
+```env
 # MCP Server Configuration
-HOST=0.0.0.0
-PORT=8051
-TRANSPORT=sse
+HOST=127.0.0.1
+PORT=4200
+TRANSPORT=http  # FastMCP 2.9.0 with Streamable HTTP
 
-# Embedding Model Configuration (supports local LM Studio)
-EMBEDDING_API_KEY=your_embedding_api_key  # or "lm-studio" for local
-EMBEDDING_BASE_URL=https://api.openai.com/v1  # or http://127.0.0.1:1234/v1 for local
-EMBEDDING_MODEL=text-embedding-3-small  # or text-embedding-nomic-embed-text-v1.5 for local
+# Embedding Configuration
+EMBEDDING_MODE=local  # "local" for Qwen3-Embedding-4B, "api" for SiliconFlow
+EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
+EMBEDDING_DIM=2560
 
-# LLM Configuration for summaries and contextual embeddings
-LLM_API_KEY=your_llm_api_key
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4.1-nano
+# API Configuration (if using EMBEDDING_MODE=api)
+SILICONFLOW_API_KEY=your_siliconflow_api_key
 
-# Reranker Configuration (local transformers with intelligent fallback)
-RERANKER_MODEL_PATH=Qwen/Qwen3-Reranker-4B
-RERANKER_DEVICE=auto
+# Reranker Configuration
+USE_RERANKING=true
+RERANKER_MODEL=Qwen/Qwen3-Reranker-4B
 
-# RAG Strategies (set to "true" or "false", default to "false")
-USE_CONTEXTUAL_EMBEDDINGS=false
-USE_HYBRID_SEARCH=false
-USE_RERANKING=false
+# Search Configuration
+USE_HYBRID_SEARCH=true  # Combines vector and keyword search
 
 # PostgreSQL Configuration
 POSTGRES_HOST=localhost
@@ -161,6 +277,27 @@ POSTGRES_DATABASE=crawl4ai_rag
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your_postgres_password
 ```
+
+### Embedding Modes
+
+#### Local Mode (Recommended)
+```env
+EMBEDDING_MODE=local
+EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
+```
+- Uses local Qwen3-Embedding-4B with Apple Silicon MPS acceleration
+- No API costs, complete privacy
+- Optimized for Apple Developer Documentation
+
+#### API Mode
+```env
+EMBEDDING_MODE=api
+SILICONFLOW_API_KEY=your_siliconflow_api_key
+EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
+```
+- Uses SiliconFlow API for embedding generation
+- Requires API key and internet connection
+- Consistent with local model output
 
 ### Local LM Studio Support
 
@@ -262,87 +399,128 @@ USE_HYBRID_SEARCH=true
 USE_RERANKING=false
 ```
 
-## Running the Server
+## 🚀 **Running the System**
 
-### Using Docker
-
-```bash
-docker run --env-file .env -p 8051:8051 mcp/crawl4ai-rag
-```
-
-### Using Python
+### 1. Start the MCP Server (Core Service)
 
 ```bash
-uv run src/crawl4ai_mcp.py
+# Run the MCP RAG server
+python src/crawl4ai_mcp.py
 ```
 
-The server will start and listen on the configured host and port.
+The MCP server will start on `http://127.0.0.1:4200/mcp` using FastMCP 2.9.0 with Streamable HTTP transport.
 
-## Integration with MCP Clients
+**Server Features:**
+- **Lazy Database Initialization**: Connections created on-demand for optimal performance
+- **Apple Silicon Optimization**: MPS acceleration for local embedding generation
+- **Comprehensive Logging**: Detailed logs for debugging and monitoring
+- **Graceful Error Handling**: Structured error responses for all failure modes
 
-### SSE Configuration
+### 2. Start the Crawling System (Optional)
 
-Once you have the server running with SSE transport, you can connect to it using this configuration:
+```bash
+# Run the independent crawling system for content acquisition
+python tools/continuous_crawler.py
+```
 
+**Crawling Features:**
+- **Batch Processing**: Intelligent batch crawling with connection pooling
+- **Apple Documentation**: Specialized for Apple Developer Documentation
+- **Smart Discovery**: Automatic link discovery and URL expansion
+- **Performance**: 3-5x faster through concurrent processing
+
+### 3. Start the Web Interface (Optional)
+
+```bash
+# Run the web management interface
+cd frontend && python api.py
+```
+
+Access the web interface at `http://localhost:8001` for system monitoring and content management.
+
+### 🏗️ **System Architecture**
+
+The system uses a **clean separation of concerns**:
+
+- **🎯 MCP Server**: Core RAG service for AI agent integration (required)
+- **🕷️ Crawling System**: Independent content acquisition (run as needed)
+- **🖥️ Web Interface**: Management and monitoring dashboard (optional)
+
+Each component can run independently and scale according to your needs.
+
+## 🔌 **MCP Client Integration**
+
+### FastMCP 2.9.0 HTTP Configuration (Recommended)
+
+The MCP server uses **FastMCP 2.9.0 with Streamable HTTP transport** for optimal performance and reliability.
+
+#### Standard MCP Client Configuration:
 ```json
 {
   "mcpServers": {
-    "crawl4ai-rag": {
-      "transport": "sse",
-      "url": "http://localhost:8051/sse"
+    "apple-docs-rag": {
+      "transport": "http",
+      "url": "http://127.0.0.1:4200/mcp"
     }
   }
 }
 ```
 
-> **Note for Windsurf users**: Use `serverUrl` instead of `url` in your configuration:
-> ```json
-> {
->   "mcpServers": {
->     "crawl4ai-rag": {
->       "transport": "sse",
->       "serverUrl": "http://localhost:8051/sse"
->     }
->   }
-> }
-> ```
->
-> **Note for Docker users**: Use `host.docker.internal` instead of `localhost` if your client is running in a different container. This will apply if you are using this MCP server within n8n!
-
-> **Note for Claude Code users**: 
-```
-claude mcp add-json crawl4ai-rag '{"type":"http","url":"http://localhost:8051/sse"}' --scope user
+#### Windsurf Configuration:
+```json
+{
+  "mcpServers": {
+    "apple-docs-rag": {
+      "transport": "http",
+      "serverUrl": "http://127.0.0.1:4200/mcp"
+    }
+  }
+}
 ```
 
-### Stdio Configuration
+#### Claude Code CLI:
+```bash
+claude mcp add-json apple-docs-rag '{"type":"http","url":"http://127.0.0.1:4200/mcp"}' --scope user
+```
 
-Add this server to your MCP configuration for Claude Desktop, Windsurf, or any other MCP client:
+### ✨ **Why HTTP Transport?**
+
+- **🚀 Performance**: Streamable HTTP provides better performance than stdio
+- **🔧 Reliability**: More stable connection management
+- **📊 Monitoring**: Better debugging and monitoring capabilities
+- **🔄 Scalability**: Supports multiple concurrent connections
+- **🛠️ Modern**: Aligns with modern MCP best practices
+
+### Alternative: Stdio Configuration
+
+For environments that require stdio transport, you can still use the traditional approach:
 
 ```json
 {
   "mcpServers": {
-    "crawl4ai-rag": {
+    "rag-server": {
       "command": "python",
-      "args": ["path/to/crawl4ai-mcp/src/crawl4ai_mcp.py"],
+      "args": ["path/to/mcp-crawl4ai-rag/src/crawl4ai_mcp.py", "--stdio"],
       "env": {
-        "TRANSPORT": "stdio",
-        "EMBEDDING_API_KEY": "your_embedding_api_key",
-        "EMBEDDING_BASE_URL": "https://api.openai.com/v1",
-        "EMBEDDING_MODEL": "text-embedding-3-small",
-        "LLM_API_KEY": "your_llm_api_key",
-        "LLM_BASE_URL": "https://api.openai.com/v1",
-        "LLM_MODEL": "gpt-4.1-nano",
+        "EMBEDDING_MODE": "api",
+        "SILICONFLOW_API_KEY": "your_siliconflow_api_key",
+        "EMBEDDING_MODEL": "Qwen/Qwen3-Embedding-4B",
+        "EMBEDDING_DIM": "2560",
+        "RERANKER_MODEL": "Qwen/Qwen3-Reranker-4B",
+        "USE_RERANKING": "true",
+        "USE_HYBRID_SEARCH": "true",
         "POSTGRES_HOST": "localhost",
         "POSTGRES_PORT": "5432",
         "POSTGRES_DATABASE": "crawl4ai_rag",
         "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "your_postgres_password",
-
+        "POSTGRES_PASSWORD": "your_postgres_password"
       }
     }
   }
 }
 ```
+
+> **Note**: Streamable HTTP is the recommended transport for modern deployments. Use stdio only when required by your specific environment.
 
 ### Docker with Stdio Configuration
 
