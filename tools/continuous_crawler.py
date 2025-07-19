@@ -34,7 +34,7 @@ async def main():
 
     try:
         # Start both crawler and processor concurrently
-        async with BatchCrawler(batch_size=5, max_concurrent=5) as crawler, ContentProcessor() as processor:
+        async with BatchCrawler(batch_size=9, max_concurrent=9) as crawler, ContentProcessor() as processor:
             await asyncio.gather(
                 crawler.start_crawling(TARGET_URL),
                 # processor.start_processing()

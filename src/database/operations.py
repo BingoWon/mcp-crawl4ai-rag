@@ -157,18 +157,35 @@ class DatabaseOperations:
             WHERE url = $1
         """, url)
 
-    async def update_pages_batch(self, url_content_pairs: List[tuple[str, str]]) -> None:
-        """批量更新页面内容和爬取计数"""
+    async def update_pages_batch(self, url_content_pairs: List[tuple[str, str]]) -> tuple[int, int]:
+        """批量选择性更新页面内容和爬取计数 - 全局最优解"""
         if not url_content_pairs:
-            return
+            return 0, 0
 
-        await self.client.execute_many("""
-            UPDATE pages
-            SET content = $2,
-                crawl_count = crawl_count + 1,
-                last_crawled_at = NOW()
-            WHERE url = $1
-        """, url_content_pairs)
+        # 分离有效内容和空内容 - 优雅现代精简
+        valid_content_pairs = [(url, content) for url, content in url_content_pairs if content.strip()]
+        empty_content_urls = [url for url, content in url_content_pairs if not content.strip()]
+
+        # 更新有效内容（完整更新）
+        if valid_content_pairs:
+            await self.client.execute_many("""
+                UPDATE pages
+                SET content = $2,
+                    crawl_count = crawl_count + 1,
+                    last_crawled_at = NOW()
+                WHERE url = $1
+            """, valid_content_pairs)
+
+        # 更新空内容（仅统计字段）
+        if empty_content_urls:
+            await self.client.execute_many("""
+                UPDATE pages
+                SET crawl_count = crawl_count + 1,
+                    last_crawled_at = NOW()
+                WHERE url = $1
+            """, [(url,) for url in empty_content_urls])
+
+        return len(valid_content_pairs), len(empty_content_urls)
 
     async def delete_chunks_by_url(self, url: str) -> None:
         """Delete all chunks for a specific URL"""

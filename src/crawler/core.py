@@ -210,16 +210,17 @@ class BatchCrawler:
             content = content_results.get(url, "")
             url_content_pairs.append((url, content))
 
-        # 批量更新数据库
+        # 批量选择性更新数据库 - 全局最优解
         if url_content_pairs:
-            await self.db_operations.update_pages_batch(url_content_pairs)
+            valid_count, empty_count = await self.db_operations.update_pages_batch(url_content_pairs)
+            logger.info(f"📊 Content update stats: {valid_count} valid, {empty_count} empty")
 
         # 存储发现的链接
         if all_discovered_links:
             await self._store_discovered_links(all_discovered_links)
-            logger.info(f"✅ Batch processed: {len(url_content_pairs)} pages, {len(all_discovered_links)} new links discovered")
+            logger.info(f"✅ Batch processed: {len(url_content_pairs)} pages ({valid_count} valid content), {len(all_discovered_links)} new links discovered")
         else:
-            logger.info(f"✅ Batch processed: {len(url_content_pairs)} pages, no new links discovered")
+            logger.info(f"✅ Batch processed: {len(url_content_pairs)} pages ({valid_count} valid content), no new links discovered")
 
     async def _store_discovered_links(self, links: list[str]) -> None:
         """Store discovered links to database if not exists"""
