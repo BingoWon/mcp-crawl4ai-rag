@@ -8,15 +8,27 @@ Features:
 - Vector similarity search using Qwen3-Embedding-4B on Apple Silicon MPS
 - Hybrid search combining vector similarity and keyword matching
 - Smart reranking with Qwen3-Reranker-4B for improved relevance
+- MCP专用query embedding with SiliconFlow API for optimal consistency
 - Optimized for Apple Developer Documentation content
 - Elegant async architecture with lazy database initialization
 - PostgreSQL vector storage with pgvector extension
+- Comprehensive logging system for monitoring and debugging
 
 Architecture:
 - FastMCP 2.9.0 with Streamable HTTP transport
 - Lazy DatabaseManager for optimal connection pool management
 - Async-first design for high performance
 - Type-safe implementation with comprehensive error handling
+- Structured logging with INFO/DEBUG/ERROR levels
+- MCP专用embedding optimization for query processing
+
+Logging Features:
+- Service lifecycle logging (startup, initialization, connections)
+- RAG query processing flow tracking
+- Database operations monitoring
+- Error handling and exception tracking
+- Performance metrics and result statistics
+- Configurable log levels for development and production
 
 Usage:
 The server exposes a single MCP tool `perform_rag_query` that accepts:
@@ -24,6 +36,12 @@ The server exposes a single MCP tool `perform_rag_query` that accepts:
 - match_count: Number of results to return (default: 5)
 
 Returns JSON with search results including URLs, content snippets, and similarity scores.
+
+Logging Configuration:
+Set log_level in mcp.run() to control verbosity:
+- "debug": Detailed flow tracking and technical details
+- "info": Important business events and service status
+- "error": Error conditions and exceptions only
 """
 from fastmcp import FastMCP
 from typing import List, Dict, Any
@@ -33,9 +51,9 @@ from pathlib import Path
 import asyncio
 import json
 import os
+import aiohttp
 
 from local_reranker import create_reranker
-from embedding import create_embedding
 
 from database import get_database_client as get_postgres_client, DatabaseOperations
 from utils.logger import setup_logger
@@ -58,9 +76,81 @@ class DatabaseManager:
     async def get_operations(self):
         async with self._lock:
             if self._operations is None:
-                client = await get_postgres_client()
-                self._operations = DatabaseOperations(client)
+                logger.debug("🔗 Initializing database connection for MCP server")
+                try:
+                    client = await get_postgres_client()
+                    self._operations = DatabaseOperations(client)
+                    logger.info("✅ Database connection established successfully")
+                except Exception as e:
+                    logger.error(f"❌ Failed to establish database connection: {e}")
+                    raise
             return self._operations
+
+# MCP专用硅基流动API配置
+SILICONFLOW_API_URL = "https://api.siliconflow.cn/v1/embeddings"
+MCP_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-4B"
+
+
+async def create_mcp_query_embedding(query: str) -> List[float]:
+    """
+    MCP专用query embedding - 仅使用硅基流动API
+
+    专门为MCP RAG查询优化的embedding函数，强制使用硅基流动API，
+    确保query embedding的一致性和性能。其他embedding操作保持现有逻辑。
+
+    Args:
+        query: 查询字符串
+
+    Returns:
+        L2标准化的embedding向量
+    """
+    # 输入验证
+    if not query or not query.strip():
+        logger.error("❌ Empty query provided for MCP embedding")
+        raise ValueError("Query cannot be empty for embedding generation")
+
+    query = query.strip()
+    logger.debug(f"🔍 Creating MCP query embedding for: {query[:50]}...")
+
+    api_key = os.getenv("SILICONFLOW_API_KEY")
+    if not api_key:
+        logger.error("❌ SILICONFLOW_API_KEY not found for MCP query embedding")
+        raise ValueError("SILICONFLOW_API_KEY is required for MCP query embedding")
+
+    payload = {
+        "model": MCP_EMBEDDING_MODEL,
+        "input": query,
+        "encoding_format": "float"
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(SILICONFLOW_API_URL, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(f"❌ SiliconFlow API error {response.status}: {error_text}")
+                    raise RuntimeError(f"SiliconFlow API error {response.status}: {error_text}")
+
+                result = await response.json()
+                embedding = result["data"][0]["embedding"]
+
+                # L2标准化
+                import math
+                norm = math.sqrt(sum(x * x for x in embedding))
+                normalized_embedding = [x / norm for x in embedding] if norm > 0 else embedding
+
+                logger.debug(f"✅ MCP query embedding created successfully, dimension: {len(normalized_embedding)}")
+                return normalized_embedding
+
+    except Exception as e:
+        logger.error(f"❌ Failed to create MCP query embedding: {e}")
+        raise
+
 
 # Global managers
 db_manager = DatabaseManager()
@@ -85,6 +175,8 @@ def rerank_results(model: Any, query: str, results: List[Dict[str, Any]], conten
     if not model or not results:
         return results
 
+    logger.debug(f"🔄 Reranking {len(results)} results for query: {query[:30]}...")
+
     try:
         # Extract content and create query-document pairs
         pairs = [(query, result.get(content_key, "")) for result in results]
@@ -96,10 +188,12 @@ def rerank_results(model: Any, query: str, results: List[Dict[str, Any]], conten
         for i, result in enumerate(results):
             result["rerank_score"] = float(scores[i])
 
-        return sorted(results, key=lambda x: x.get("rerank_score", 0), reverse=True)
+        reranked_results = sorted(results, key=lambda x: x.get("rerank_score", 0), reverse=True)
+        logger.debug(f"✅ Reranking completed, top score: {reranked_results[0].get('rerank_score', 0):.4f}")
+        return reranked_results
 
     except Exception as e:
-        logger.error(f"Reranking error: {e}")
+        logger.error(f"❌ Reranking error: {e}")
         return results
 
 # Search functions moved from utils.py
@@ -109,8 +203,8 @@ async def _search_documents_async(
     match_count: int = 10
 ) -> List[Dict[str, Any]]:
     """Search for documents using vector similarity."""
-    # Create embedding for the query
-    query_embedding = create_embedding(query)
+    # Create embedding for the query using MCP专用硅基流动API
+    query_embedding = await create_mcp_query_embedding(query)
 
     # Use lazy database operations
     operations = await db_manager.get_operations()
@@ -137,27 +231,46 @@ async def perform_rag_query(query: str, match_count: int = 5) -> str:
     Returns:
         JSON string with the search results
     """
+    # 输入验证 - 全局最优解
+    if not query or not query.strip():
+        logger.warning("⚠️ Empty query received")
+        return json.dumps({
+            "success": False,
+            "query": query,
+            "error": "Query cannot be empty. Please provide a search query to find relevant Apple Developer Documentation.",
+            "suggestion": "Try searching for topics like 'SwiftUI navigation', 'iOS app development', or 'Apple API documentation'."
+        }, indent=2)
+
+    # 标准化查询字符串
+    query = query.strip()
+
+    logger.info(f"🔍 RAG query received: '{query}' (match_count: {match_count})")
+
     try:
         # Use lazy database operations
         operations = await db_manager.get_operations()
 
         # Check if hybrid search is enabled
         use_hybrid_search = os.getenv("USE_HYBRID_SEARCH", "false") == "true"
+        logger.debug(f"🔧 Search mode: {'hybrid' if use_hybrid_search else 'vector'}")
 
         if use_hybrid_search:
             # Hybrid search: combine vector and keyword search
+            logger.debug("🔀 Performing hybrid search (vector + keyword)")
 
             # 1. Get vector search results
             vector_results = await search_documents(
                 query=query,
                 match_count=match_count * 2
             )
+            logger.debug(f"📊 Vector search found {len(vector_results)} results")
 
             # 2. Get keyword search results using database operations
             keyword_results = await operations.search_documents_keyword(
                 query=query,
                 match_count=match_count * 2
             )
+            logger.debug(f"🔤 Keyword search found {len(keyword_results)} results")
 
             # 3. Combine results with preference for items appearing in both
             seen_ids = set()
@@ -207,7 +320,12 @@ async def perform_rag_query(query: str, match_count: int = 5) -> str:
         # Apply reranking if enabled
         use_reranking = os.getenv("USE_RERANKING", "false") == "true"
         if use_reranking and reranking_model:
+            logger.debug("🎯 Applying smart reranking")
             results = rerank_results(reranking_model, query, results, content_key="content")
+        elif use_reranking:
+            logger.debug("⚠️ Reranking enabled but model not available")
+
+        logger.debug(f"📋 Formatting {len(results)} final results")
 
         # Format the results
         formatted_results = []
@@ -222,6 +340,8 @@ async def perform_rag_query(query: str, match_count: int = 5) -> str:
                 formatted_result["rerank_score"] = result["rerank_score"]
             formatted_results.append(formatted_result)
 
+        logger.info(f"✅ RAG query completed successfully: {len(formatted_results)} results returned")
+
         return json.dumps({
             "success": True,
             "query": query,
@@ -231,6 +351,7 @@ async def perform_rag_query(query: str, match_count: int = 5) -> str:
             "count": len(formatted_results)
         }, indent=2)
     except Exception as e:
+        logger.error(f"❌ RAG query failed for '{query}': {e}")
         return json.dumps({
             "success": False,
             "query": query,
@@ -244,6 +365,10 @@ if os.getenv("USE_RERANKING", "false") == "true":
     logger.info("✅ Reranker initialized successfully")
 
 if __name__ == "__main__":
+    logger.info("🚀 Starting MCP RAG Server")
+    logger.info("📡 Transport: HTTP (FastMCP 2.9.0)")
+    logger.info("🌐 Endpoint: http://127.0.0.1:4200/mcp")
+
     # Run the MCP server with Streamable HTTP transport
     mcp.run(
         transport="http",

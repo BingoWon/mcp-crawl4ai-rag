@@ -98,6 +98,8 @@ The Crawl4AI RAG MCP server is just the beginning. Here's where we're headed:
 - **Lazy Initialization**: DatabaseManager with on-demand connection creation
 - **Clean Separation**: Independent MCP server and crawling system components
 - **Production-Ready**: Comprehensive error handling and graceful degradation
+- **MCP专用Embedding**: Dedicated SiliconFlow API integration for query embedding
+- **Structured Logging**: Multi-level logging system with service and business event tracking
 
 ### 🗄️ **Data Management**
 - **PostgreSQL + pgvector**: Vector storage with cosine similarity search
@@ -116,9 +118,16 @@ The Crawl4AI RAG MCP server is just the beginning. Here's where we're headed:
 ### 🔧 **Developer Experience**
 - **Single MCP Tool**: Simple `perform_rag_query` interface
 - **JSON Responses**: Structured results with URLs, content, and similarity scores
-- **Comprehensive Logging**: Detailed logging for debugging and monitoring
+- **Comprehensive Logging**: Multi-level logging system for complete observability
 - **Environment Configuration**: Flexible .env-based configuration
 - **Error Handling**: Graceful error responses with detailed error messages
+
+### 📊 **Logging Architecture**
+- **Service Level**: Server startup, database connections, module initialization
+- **Business Level**: RAG query processing, search operations, result formatting
+- **Technical Level**: Embedding generation, API calls, performance metrics
+- **Error Level**: Exception handling, API failures, connection issues
+- **Debug Level**: Detailed flow tracking, intermediate results, technical diagnostics
 
 ## 🛠️ **MCP Tool**
 
@@ -299,6 +308,41 @@ EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
 - Requires API key and internet connection
 - Consistent with local model output
 
+### 📊 **Logging Configuration**
+
+The MCP server includes a comprehensive logging system for monitoring and debugging:
+
+#### Log Levels
+```env
+# Set in mcp.run() call or environment
+LOG_LEVEL=debug  # debug, info, warning, error
+```
+
+#### Logging Features
+- **Service Lifecycle**: Server startup, database connections, module initialization
+- **RAG Query Flow**: Complete query processing pipeline tracking
+- **Performance Metrics**: Search results, processing times, result counts
+- **Error Handling**: Detailed error messages with context
+- **Debug Information**: Technical details for development and troubleshooting
+
+#### Log Output Examples
+```
+🚀 Starting MCP RAG Server
+📡 Transport: HTTP (FastMCP 2.9.0)
+🌐 Endpoint: http://127.0.0.1:4200/mcp
+✅ Database connection established successfully
+🔍 RAG query received: 'SwiftUI navigation' (match_count: 3)
+🔧 Search mode: hybrid
+📊 Vector search found 6 results
+🔤 Keyword search found 4 results
+✅ RAG query completed successfully: 3 results returned
+```
+
+#### Production Recommendations
+- **Production**: Use `info` level for essential events only
+- **Development**: Use `debug` level for detailed flow tracking
+- **Monitoring**: Monitor `error` level logs for system health
+
 ### Local LM Studio Support
 
 The server now supports **native LM Studio integration** for embeddings, providing better compatibility and performance with local models:
@@ -415,6 +459,33 @@ The MCP server will start on `http://127.0.0.1:4200/mcp` using FastMCP 2.9.0 wit
 - **Apple Silicon Optimization**: MPS acceleration for local embedding generation
 - **Comprehensive Logging**: Detailed logs for debugging and monitoring
 - **Graceful Error Handling**: Structured error responses for all failure modes
+
+**Logging Output:**
+The server provides detailed logging for monitoring and debugging:
+```
+🚀 Starting MCP RAG Server
+📡 Transport: HTTP (FastMCP 2.9.0)
+🌐 Endpoint: http://127.0.0.1:4200/mcp
+🔗 Initializing database connection for MCP server
+✅ Database connection established successfully
+✅ Reranker initialized successfully
+```
+
+**Query Processing Logs:**
+```
+🔍 RAG query received: 'SwiftUI navigation best practices' (match_count: 3)
+🔧 Search mode: hybrid
+🔍 Creating MCP query embedding for: SwiftUI navigation best practices...
+✅ MCP query embedding created successfully, dimension: 2560
+🔀 Performing hybrid search (vector + keyword)
+📊 Vector search found 6 results
+🔤 Keyword search found 4 results
+🎯 Applying smart reranking
+🔄 Reranking 6 results for query: SwiftUI navigation best prac...
+✅ Reranking completed, top score: 0.8542
+📋 Formatting 3 final results
+✅ RAG query completed successfully: 3 results returned
+```
 
 ### 2. Start the Crawling System (Optional)
 
