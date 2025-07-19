@@ -62,7 +62,7 @@ app.add_middleware(
 
 @app.get("/api/pages")
 async def get_pages(page: int = 1, size: int = 100, search: str = "",
-                   sort: str = "updated_at", order: str = "desc") -> JSONResponse:
+                   sort: str = "created_at", order: str = "desc") -> JSONResponse:
     """获取pages表数据（分页）"""
     try:
         async with PostgreSQLClient() as client:
@@ -289,6 +289,12 @@ async def get_stats() -> JSONResponse:
                 WHERE content IS NOT NULL AND content != ''
             """)
 
+            # 获取异常页面统计（已爬取但内容异常短）
+            anomalous_pages = await client.fetch_all("""
+                SELECT COUNT(*) as count FROM pages
+                WHERE crawl_count > 0 AND LENGTH(content) < 10
+            """)
+
             total_pages = pages_count[0]["count"]
             content_pages = pages_with_content[0]["count"]
             content_percentage = (content_pages / total_pages * 100) if total_pages > 0 else 0
@@ -303,7 +309,8 @@ async def get_stats() -> JSONResponse:
                     "pages_with_content": content_pages,
                     "content_percentage": f"{content_percentage:.2f}",
                     "avg_crawl_count": round(avg_crawl, 4),
-                    "avg_process_count": round(avg_process, 4)
+                    "avg_process_count": round(avg_process, 4),
+                    "anomalous_pages": anomalous_pages[0]["count"]
                 }
             })
     except Exception as e:

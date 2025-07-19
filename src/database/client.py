@@ -78,7 +78,7 @@ class PostgreSQLClient:
             # Enable pgvector extension
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-            # Create pages table with crawl_count and process_count
+            # Create pages table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS pages (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -86,27 +86,10 @@ class PostgreSQLClient:
                     crawl_count INTEGER DEFAULT 0,
                     process_count INTEGER DEFAULT 0,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    last_crawled_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    content TEXT NOT NULL
+                    last_crawled_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+                    content TEXT NOT NULL DEFAULT ''
                 )
             """)
-
-            # Migrate existing tables to new schema
-            try:
-                # Add process_count column if it doesn't exist
-                await conn.execute("""
-                    ALTER TABLE pages
-                    ADD COLUMN IF NOT EXISTS process_count INTEGER DEFAULT 0
-                """)
-
-                # Rename updated_at to last_crawled_at if needed
-                await conn.execute("""
-                    ALTER TABLE pages
-                    RENAME COLUMN updated_at TO last_crawled_at
-                """)
-            except Exception:
-                # Column might already be renamed
-                pass
 
             # Create chunks table
             await conn.execute("""
@@ -119,7 +102,7 @@ class PostgreSQLClient:
                 )
             """)
 
-            # Create indexes for performance
+            # Create indexes
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_crawl_count ON pages(crawl_count)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_process_count ON pages(process_count)")

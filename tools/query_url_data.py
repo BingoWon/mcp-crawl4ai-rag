@@ -53,7 +53,7 @@ def save_to_file(url: str, page_data: dict, chunks_data: list):
             f.write(f"内容长度: {content_length} 字符\n")
             f.write(f"爬取次数: {page_data['crawl_count']}\n")
             f.write(f"创建时间: {page_data['created_at']}\n")
-            f.write(f"更新时间: {page_data['updated_at']}\n\n")
+            f.write(f"上次爬取时间: {page_data['last_crawled_at']}\n\n")
             
             f.write("内容:\n")
             f.write("-" * 50 + "\n")
