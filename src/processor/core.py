@@ -98,6 +98,8 @@ class ContentProcessor:
                 # Process the page content
                 await self._process_content(next_url, content)
 
+                await asyncio.sleep(1)  # TODO: Wait before checking again
+
             except KeyboardInterrupt:
                 logger.info("Processor interrupted by user")
                 break
