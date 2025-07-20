@@ -21,6 +21,7 @@ class PostgreSQLConfig:
     database: str = os.getenv('POSTGRES_DATABASE', 'crawl4ai_rag')
     user: str = os.getenv('POSTGRES_USER', os.getenv('USER', 'postgres'))
     password: str = os.getenv('POSTGRES_PASSWORD', '')
+    sslmode: str = os.getenv('POSTGRES_SSLMODE', 'prefer')
     
     # Pool configuration
     min_pool_size: int = 2
@@ -47,7 +48,7 @@ class PostgreSQLConfig:
     
     def to_dict(self) -> dict:
         """Convert to dictionary for asyncpg.create_pool"""
-        return {
+        config = {
             'host': self.host,
             'port': self.port,
             'database': self.database,
@@ -57,3 +58,9 @@ class PostgreSQLConfig:
             'max_size': self.max_pool_size,
             'command_timeout': self.command_timeout
         }
+
+        # Add SSL configuration if specified
+        if self.sslmode and self.sslmode != 'disable':
+            config['ssl'] = self.sslmode
+
+        return config

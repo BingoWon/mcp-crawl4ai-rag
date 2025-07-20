@@ -141,7 +141,7 @@ class CrawlerPool:
         """创建爬虫配置"""
         return CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS,
-            delay_before_return_html=2.0,
+            delay_before_return_html=1.5,
             page_timeout=10000,
             css_selector=css_selector,
             exclude_external_links=True,   
@@ -156,47 +156,16 @@ class CrawlerPool:
         """异步上下文管理器出口"""
         await self.close()
 
-    async def _is_crawler_healthy(self, crawler: AsyncWebCrawler) -> bool:
-        """检查爬虫实例健康状态"""
-        try:
-            # 检查浏览器是否仍然连接
-            if not hasattr(crawler, 'browser') or not crawler.browser:
-                return False
-            # 尝试获取浏览器版本来验证连接
-            await crawler.browser.version()
-            return True
-        except Exception:
-            return False
-
-    async def _recreate_crawler(self) -> AsyncWebCrawler:
-        """重新创建健康的爬虫实例"""
-        crawler = AsyncWebCrawler(config=self.browser_config)
-        await crawler.__aenter__()
-        return crawler
-
     async def get_crawler(self) -> AsyncWebCrawler:
-        """从连接池获取健康的爬虫实例"""
-        while True:
-            crawler = await self.available_crawlers.get()
-            if await self._is_crawler_healthy(crawler):
-                return crawler
-
-            # 清理失效实例并创建新实例
-            try:
-                await crawler.__aexit__(None, None, None)
-            except Exception:
-                pass
-
-            new_crawler = await self._recreate_crawler()
-            logger.info("Recreated failed crawler instance")
-            return new_crawler
+        """从连接池获取爬虫实例"""
+        return await self.available_crawlers.get()
 
     async def return_crawler(self, crawler: AsyncWebCrawler) -> None:
         """将爬虫实例归还到连接池"""
         await self.available_crawlers.put(crawler)
     
     async def crawl_page(self, url: str, css_selector: str = None, max_retries: int = 2):
-        """爬取页面内容和链接，支持自动重试和故障恢复"""
+        """爬取页面内容和链接，智能错误处理和重试"""
         logger.info(f"Extracting content and links from: {url}")
 
         for attempt in range(max_retries + 1):
@@ -215,22 +184,32 @@ class CrawlerPool:
 
             except Exception as e:
                 error_msg = str(e)
-                is_connection_error = any(keyword in error_msg.lower() for keyword in [
+                is_permanent_error = any(keyword in error_msg.lower() for keyword in [
                     'connection closed', 'pipe closed', 'browsercontext.new_page'
                 ])
 
-                if is_connection_error and attempt < max_retries:
-                    logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries + 1} for {url}: {error_msg}")
-                    # 清理失效实例，不归还到连接池
+                if is_permanent_error:
+                    # 永久错误：清理实例，创建新实例
                     try:
                         await crawler.__aexit__(None, None, None)
                     except Exception:
                         pass
-                    continue
+
+                    if attempt < max_retries:
+                        logger.warning(f"Permanent error on attempt {attempt + 1}, recreating instance: {error_msg}")
+                        new_crawler = AsyncWebCrawler(config=self.browser_config)
+                        await new_crawler.__aenter__()
+                        await self.available_crawlers.put(new_crawler)
+                        continue
                 else:
-                    logger.error(f"Failed to crawl {url} after {attempt + 1} attempts: {error_msg}")
+                    # 临时错误：归还实例，直接重试
                     await self.return_crawler(crawler)
-                    raise
+                    if attempt < max_retries:
+                        logger.warning(f"Temporary error on attempt {attempt + 1}, retrying: {error_msg}")
+                        continue
+
+                logger.error(f"Failed to crawl {url} after {attempt + 1} attempts: {error_msg}")
+                raise
 
     async def crawl_pages_batch(self, url_selector_pairs: List[tuple[str, str]]):
         """批量爬取页面"""
