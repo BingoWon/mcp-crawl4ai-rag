@@ -29,20 +29,16 @@ class DatabaseViewer {
     this.updateLastUpdateTime();
   }
 
-  async loadPages(page = null) {
+  async loadPages() {
     try {
-      const currentPage = page || this.pagination.pages.page;
       const response = await fetch(
-        `${this.apiBase}/pages?page=${currentPage}&size=${this.pagination.pages.size}&sort=created_at&order=desc`
+        `${this.apiBase}/pages?sort=last_crawled_at&order=desc`
       );
       const result = await response.json();
 
       if (result.success) {
-        // 更新分页信息，确保类型正确
-        this.pagination.pages.page = parseInt(result.pagination.page) || 1;
-        this.pagination.pages.size = parseInt(result.pagination.size) || 50;
-        this.pagination.pages.total = parseInt(result.pagination.total) || 0;
-        this.pagination.pages.pages = parseInt(result.pagination.pages) || 0;
+        // 简化后的数据结构 - 固定100条数据，无分页
+        this.pagination.pages.total = result.count || 0;
 
         // 智能刷新：只有数据变化时才更新DOM
         if (!this.isDataEqual(this.lastData.pages, result.data)) {
@@ -62,8 +58,7 @@ class DatabaseViewer {
           this.updatePageStats(result.stats);
         }
 
-        // 更新分页UI
-        this.updatePagination("pages");
+        // 无需分页UI - 固定显示100条数据
       } else {
         this.showError("pages", result.error || "未知错误");
       }
@@ -310,9 +305,16 @@ class DatabaseViewer {
 
   // 更新分页UI
   updatePagination(type) {
-    const pagination = this.pagination[type];
     const container = document.getElementById(`${type}-pagination`);
 
+    // Pages表无分页功能，直接隐藏
+    if (type === "pages") {
+      if (container) container.style.display = "none";
+      return;
+    }
+
+    // 其他表保持原有分页逻辑
+    const pagination = this.pagination[type];
     if (!container || pagination.pages <= 1) {
       if (container) container.style.display = "none";
       return;
@@ -363,11 +365,10 @@ class DatabaseViewer {
 
     this.pagination[type].page = newPage;
 
-    if (type === "pages") {
-      await this.loadPages(newPage);
-    } else if (type === "chunks") {
+    if (type === "chunks") {
       await this.loadChunks(newPage);
     }
+    // Pages表无分页功能，固定显示100条数据
   }
 
   // 清除缓存，强制刷新
