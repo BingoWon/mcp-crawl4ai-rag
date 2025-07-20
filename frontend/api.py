@@ -46,7 +46,7 @@ import uvicorn
 # 添加src目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from database.client import PostgreSQLClient
+from database.utils import get_database_client
 
 app = FastAPI(title="Database Viewer API", version="1.0.0")
 
@@ -61,104 +61,97 @@ app.add_middleware(
 
 
 @app.get("/api/pages")
-async def get_pages(page: int = 1, size: int = 100, search: str = "",
-                   sort: str = "created_at", order: str = "desc") -> JSONResponse:
-    """获取pages表数据（分页）"""
+async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str = "desc") -> JSONResponse:
+    """获取pages表数据（固定前100条）"""
     try:
-        async with PostgreSQLClient() as client:
-            # 构建查询条件
-            where_clause = ""
-            params = []
-            if search:
-                where_clause = "WHERE url ILIKE $1 OR content ILIKE $1"
-                params.append(f"%{search}%")
+        client = await get_database_client()
 
-            # 构建排序
-            valid_sorts = ["id", "url", "crawl_count", "process_count", "created_at", "last_crawled_at"]
-            sort_column = sort if sort in valid_sorts else "last_crawled_at"
-            sort_order = "ASC" if order.lower() == "asc" else "DESC"
+        # 构建查询条件
+        where_clause = ""
+        params = []
+        if search:
+            where_clause = "WHERE url ILIKE $1 OR content ILIKE $1"
+            params.append(f"%{search}%")
 
-            # 计算分页
-            offset = (page - 1) * size
+        # 构建排序 - 优雅现代精简
+        valid_sorts = ["id", "url", "crawl_count", "process_count", "created_at", "last_crawled_at"]
+        sort_column = sort if sort in valid_sorts else "last_crawled_at"
+        sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
-            # 获取总数
-            count_query = f"SELECT COUNT(*) as total FROM pages {where_clause}"
-            total_result = await client.fetch_all(count_query, *params)
-            total = total_result[0]["total"]
-
-            # 获取分页数据
-            limit_param = len(params) + 1
-            offset_param = len(params) + 2
+        # 获取前100条数据 - 固定数量，无分页
+        if search:
             query = f"""
                 SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
                 FROM pages {where_clause}
                 ORDER BY {sort_column} {sort_order}
-                LIMIT ${limit_param} OFFSET ${offset_param}
+                LIMIT 100
             """
-            params.extend([size, offset])
-            pages = await client.fetch_all(query, *params)
+            pages = await client.fetch_all(query, params[0])
+        else:
+            query = f"""
+                SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
+                FROM pages
+                ORDER BY {sort_column} {sort_order}
+                LIMIT 100
+            """
+            pages = await client.fetch_all(query)
 
-            # 计算平均爬取间隔时间（只包含已爬取的页面）
-            avg_crawl_interval = None
-            # 过滤掉crawl_count为0的页面（未爬取的页面）
-            crawled_pages = [page for page in pages if page["crawl_count"] > 0]
+        # 计算平均爬取间隔时间（只包含已爬取的页面）- 优雅现代精简
+        avg_crawl_interval = None
+        crawled_pages = [page for page in pages if page["crawl_count"] > 0]
 
-            if len(crawled_pages) >= 2:
-                # 按last_crawled_at排序（确保时间顺序）
-                sorted_pages = sorted(crawled_pages, key=lambda x: x["last_crawled_at"])
-                intervals = []
+        if len(crawled_pages) >= 2:
+            # 按last_crawled_at排序（确保时间顺序）
+            sorted_pages = sorted(crawled_pages, key=lambda x: x["last_crawled_at"])
+            intervals = []
 
-                for i in range(1, len(sorted_pages)):
-                    prev_time = sorted_pages[i-1]["last_crawled_at"]
-                    curr_time = sorted_pages[i]["last_crawled_at"]
+            for i in range(1, len(sorted_pages)):
+                prev_time = sorted_pages[i-1]["last_crawled_at"]
+                curr_time = sorted_pages[i]["last_crawled_at"]
 
-                    # 计算时间间隔（秒）
-                    from datetime import datetime
-                    if isinstance(prev_time, str):
-                        prev_dt = datetime.fromisoformat(prev_time.replace('Z', '+00:00'))
-                        curr_dt = datetime.fromisoformat(curr_time.replace('Z', '+00:00'))
-                    else:
-                        prev_dt = prev_time
-                        curr_dt = curr_time
+                # 计算时间间隔（秒）
+                from datetime import datetime
+                if isinstance(prev_time, str):
+                    prev_dt = datetime.fromisoformat(prev_time.replace('Z', '+00:00'))
+                    curr_dt = datetime.fromisoformat(curr_time.replace('Z', '+00:00'))
+                else:
+                    prev_dt = prev_time
+                    curr_dt = curr_time
 
-                    interval_seconds = (curr_dt - prev_dt).total_seconds()
-                    intervals.append(interval_seconds)
+                interval_seconds = (curr_dt - prev_dt).total_seconds()
+                intervals.append(interval_seconds)
 
-                if intervals:
-                    avg_crawl_interval = sum(intervals) / len(intervals)
+            # 计算平均值（intervals在此作用域内已定义）
+            if intervals:
+                avg_crawl_interval = sum(intervals) / len(intervals)
 
-            # 格式化数据
-            formatted_pages = []
-            for page in pages:
-                # 简化URL显示
-                display_url = page["url"]
-                if display_url.startswith("https://developer.apple.com/documentation"):
-                    display_url = display_url.replace("https://developer.apple.com/documentation", "...")
+        # 格式化数据
+        formatted_pages = []
+        for page in pages:
+            # 简化URL显示
+            display_url = page["url"]
+            if display_url.startswith("https://developer.apple.com/documentation"):
+                display_url = display_url.replace("https://developer.apple.com/documentation", "...")
 
-                formatted_pages.append({
-                    "id": page["id"],  # 数据库层已处理UUID序列化
-                    "url": display_url,
-                    "full_url": page["url"],  # 完整URL
-                    "content": page["content"][:100] + "..." if len(page["content"]) > 100 else page["content"],
-                    "full_content": page["content"],  # 完整内容
-                    "crawl_count": page["crawl_count"],
-                    "process_count": page["process_count"],
-                    "created_at": page["created_at"],  # 数据库层已转换为ISO格式
-                    "last_crawled_at": page["last_crawled_at"]  # 数据库层已转换为ISO格式
-                })
+            formatted_pages.append({
+                "id": page["id"],  # 数据库层已处理UUID序列化
+                "url": display_url,
+                "full_url": page["url"],  # 完整URL
+                "content": page["content"][:100] + "..." if len(page["content"]) > 100 else page["content"],
+                "full_content": page["content"],  # 完整内容
+                "crawl_count": page["crawl_count"],
+                "process_count": page["process_count"],
+                "created_at": page["created_at"],  # 数据库层已转换为ISO格式
+                "last_crawled_at": page["last_crawled_at"]  # 数据库层已转换为ISO格式
+            })
 
             return JSONResponse({
                 "success": True,
                 "data": formatted_pages,
-                "pagination": {
-                    "page": page,  # FastAPI已确保是整数
-                    "size": size,  # FastAPI已确保是整数
-                    "total": total,
-                    "pages": (total + size - 1) // size
-                },
+                "count": len(formatted_pages),
                 "stats": {
                     "avg_crawl_interval": f"{avg_crawl_interval:.2f}" if avg_crawl_interval else None,
-                    "data_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
+                    "crawled_pages_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
                 }
             })
     except Exception as e:
@@ -174,50 +167,51 @@ async def get_chunks(page: int = 1, size: int = 50, search: str = "",
                     page_id: str = "", sort: str = "created_at", order: str = "desc") -> JSONResponse:
     """获取chunks表数据（分页）"""
     try:
-        async with PostgreSQLClient() as client:
-            # 构建查询条件
-            where_conditions = []
-            params = []
+        client = await get_database_client()
 
-            if search:
-                where_conditions.append("(url ILIKE $1 OR content ILIKE $1)")
-                params.append(f"%{search}%")
+        # 构建查询条件
+        where_conditions = []
+        params = []
 
-            if page_id:
-                param_index = len(params) + 1
-                where_conditions.append(f"url IN (SELECT url FROM pages WHERE id = ${param_index}::uuid)")
-                params.append(page_id)
+        if search:
+            where_conditions.append("(url ILIKE $1 OR content ILIKE $1)")
+            params.append(f"%{search}%")
 
-            where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+        if page_id:
+            param_index = len(params) + 1
+            where_conditions.append(f"url IN (SELECT url FROM pages WHERE id = ${param_index}::uuid)")
+            params.append(page_id)
 
-            # 构建排序
-            valid_sorts = ["id", "url", "created_at"]
-            sort_column = sort if sort in valid_sorts else "created_at"
-            sort_order = "ASC" if order.lower() == "asc" else "DESC"
+        where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
 
-            # 计算分页
-            offset = (page - 1) * size
+        # 构建排序
+        valid_sorts = ["id", "url", "created_at"]
+        sort_column = sort if sort in valid_sorts else "created_at"
+        sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
-            # 获取总数
-            count_query = f"SELECT COUNT(*) as total FROM chunks {where_clause}"
-            total_result = await client.fetch_all(count_query, *params)
-            total = total_result[0]["total"]
+        # 计算分页
+        offset = (page - 1) * size
 
-            # 获取分页数据
-            limit_param = len(params) + 1
-            offset_param = len(params) + 2
-            query = f"""
-                SELECT id, url, content, created_at, embedding
-                FROM chunks {where_clause}
-                ORDER BY {sort_column} {sort_order}
-                LIMIT ${limit_param} OFFSET ${offset_param}
-            """
-            params.extend([size, offset])
-            chunks = await client.fetch_all(query, *params)
+        # 获取总数
+        count_query = f"SELECT COUNT(*) as total FROM chunks {where_clause}"
+        total_result = await client.fetch_all(count_query, *params)
+        total = total_result[0]["total"]
 
-            # 格式化数据
-            formatted_chunks = []
-            for chunk in chunks:
+        # 获取分页数据
+        limit_param = len(params) + 1
+        offset_param = len(params) + 2
+        query = f"""
+            SELECT id, url, content, created_at, embedding
+            FROM chunks {where_clause}
+            ORDER BY {sort_column} {sort_order}
+            LIMIT ${limit_param} OFFSET ${offset_param}
+        """
+        params.extend([size, offset])
+        chunks = await client.fetch_all(query, *params)
+
+        # 格式化数据
+        formatted_chunks = []
+        for chunk in chunks:
                 # 简化URL显示
                 display_url = chunk["url"]
                 if display_url.startswith("https://developer.apple.com/documentation"):
@@ -246,16 +240,16 @@ async def get_chunks(page: int = 1, size: int = 50, search: str = "",
                     "raw_embedding": str(chunk["embedding"]) if chunk["embedding"] else None
                 })
 
-            return JSONResponse({
-                "success": True,
-                "data": formatted_chunks,
-                "pagination": {
-                    "page": page,  # FastAPI已确保是整数
-                    "size": size,  # FastAPI已确保是整数
-                    "total": total,
-                    "pages": (total + size - 1) // size
-                }
-            })
+        return JSONResponse({
+            "success": True,
+            "data": formatted_chunks,
+            "pagination": {
+                "page": page,  # FastAPI已确保是整数
+                "size": size,  # FastAPI已确保是整数
+                "total": total,
+                "pages": (total + size - 1) // size
+            }
+        })
     except Exception as e:
         return JSONResponse({
             "success": False,
@@ -268,51 +262,52 @@ async def get_chunks(page: int = 1, size: int = 50, search: str = "",
 async def get_stats() -> JSONResponse:
     """获取统计信息"""
     try:
-        async with PostgreSQLClient() as client:
-            # 获取pages基础统计
-            pages_count = await client.fetch_all("SELECT COUNT(*) as count FROM pages")
-            chunks_count = await client.fetch_all("SELECT COUNT(*) as count FROM chunks")
+        client = await get_database_client()
 
-            # 获取有content的pages统计
-            pages_with_content = await client.fetch_all("""
-                SELECT COUNT(*) as count FROM pages
-                WHERE content IS NOT NULL AND content != ''
-            """)
+        # 获取pages基础统计
+        pages_count = await client.fetch_all("SELECT COUNT(*) as count FROM pages")
+        chunks_count = await client.fetch_all("SELECT COUNT(*) as count FROM chunks")
 
-            # 获取平均crawl count和process count
-            avg_crawl_count = await client.fetch_all("""
-                SELECT AVG(crawl_count) as avg_count FROM pages
-            """)
+        # 获取有content的pages统计
+        pages_with_content = await client.fetch_all("""
+            SELECT COUNT(*) as count FROM pages
+            WHERE content IS NOT NULL AND content != ''
+        """)
 
-            avg_process_count = await client.fetch_all("""
-                SELECT AVG(process_count) as avg_count FROM pages
-                WHERE content IS NOT NULL AND content != ''
-            """)
+        # 获取平均crawl count和process count
+        avg_crawl_count = await client.fetch_all("""
+            SELECT AVG(crawl_count) as avg_count FROM pages
+        """)
 
-            # 获取异常页面统计（已爬取但内容异常短）
-            anomalous_pages = await client.fetch_all("""
-                SELECT COUNT(*) as count FROM pages
-                WHERE crawl_count > 0 AND LENGTH(content) < 10
-            """)
+        avg_process_count = await client.fetch_all("""
+            SELECT AVG(process_count) as avg_count FROM pages
+            WHERE content IS NOT NULL AND content != ''
+        """)
 
-            total_pages = pages_count[0]["count"]
-            content_pages = pages_with_content[0]["count"]
-            content_percentage = (content_pages / total_pages * 100) if total_pages > 0 else 0
-            avg_crawl = float(avg_crawl_count[0]["avg_count"]) if avg_crawl_count[0]["avg_count"] else 0
-            avg_process = float(avg_process_count[0]["avg_count"]) if avg_process_count[0]["avg_count"] else 0
+        # 获取异常页面统计（已爬取但内容异常短）
+        anomalous_pages = await client.fetch_all("""
+            SELECT COUNT(*) as count FROM pages
+            WHERE crawl_count > 0 AND LENGTH(content) < 10
+        """)
 
-            return JSONResponse({
-                "success": True,
-                "data": {
-                    "pages_count": total_pages,
-                    "chunks_count": chunks_count[0]["count"],
-                    "pages_with_content": content_pages,
-                    "content_percentage": f"{content_percentage:.2f}",
-                    "avg_crawl_count": round(avg_crawl, 4),
-                    "avg_process_count": round(avg_process, 4),
-                    "anomalous_pages": anomalous_pages[0]["count"]
-                }
-            })
+        total_pages = pages_count[0]["count"]
+        content_pages = pages_with_content[0]["count"]
+        content_percentage = (content_pages / total_pages * 100) if total_pages > 0 else 0
+        avg_crawl = float(avg_crawl_count[0]["avg_count"]) if avg_crawl_count[0]["avg_count"] else 0
+        avg_process = float(avg_process_count[0]["avg_count"]) if avg_process_count[0]["avg_count"] else 0
+
+        return JSONResponse({
+            "success": True,
+            "data": {
+                "pages_count": total_pages,
+                "chunks_count": chunks_count[0]["count"],
+                "pages_with_content": content_pages,
+                "content_percentage": f"{content_percentage:.2f}",
+                "avg_crawl_count": round(avg_crawl, 4),
+                "avg_process_count": round(avg_process, 4),
+                "anomalous_pages": anomalous_pages[0]["count"]
+            }
+        })
     except Exception as e:
         return JSONResponse({
             "success": False,
