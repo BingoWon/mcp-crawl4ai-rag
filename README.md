@@ -13,7 +13,7 @@ A high-performance implementation of the [Model Context Protocol (MCP)](https://
 - **🔍 Hybrid Search**: Combines vector similarity with keyword matching for comprehensive results
 - **⚡ Smart Reranking**: Qwen3-Reranker-4B integration with automatic fallback mechanisms
 - **🍎 Apple-Optimized**: Specialized for Apple Developer Documentation content structure
-- **📊 PostgreSQL + pgvector**: High-performance vector storage with cosine similarity search
+- **☁️ NEON Cloud Database**: Cloud-native PostgreSQL with pgvector for scalable vector storage
 - **🔧 Modern Architecture**: FastMCP 2.9.0 with Streamable HTTP transport
 
 ## 🏗️ **Architecture Overview**
@@ -101,12 +101,12 @@ The Crawl4AI RAG MCP server is just the beginning. Here's where we're headed:
 - **MCP专用Embedding**: Dedicated SiliconFlow API integration for query embedding
 - **Structured Logging**: Multi-level logging system with service and business event tracking
 
-### 🗄️ **Data Management**
-- **PostgreSQL + pgvector**: Vector storage with cosine similarity search
+### 🗄️ **Cloud Data Management**
+- **NEON Cloud Database**: Serverless PostgreSQL with pgvector for vector storage
 - **Intelligent Chunking**: Header-based content segmentation for Apple docs
-- **Embedding Storage**: Efficient vector storage in chunks table
-- **Connection Pooling**: Optimized database connection management
-- **Batch Operations**: High-performance bulk database operations
+- **Cloud Vector Storage**: Scalable embedding storage in NEON cloud
+- **SSL Connection Pooling**: Secure cloud database connection management
+- **Cloud-Optimized Operations**: High-performance bulk operations for cloud deployment
 
 ### 🍎 **Apple Documentation Optimization**
 - **Content Extraction**: Specialized parsing for Apple Developer Documentation
@@ -192,7 +192,7 @@ Access the management interface at `http://localhost:8001`:
 ## Prerequisites
 
 - [Python 3.12+](https://www.python.org/downloads/) for running the system
-- [PostgreSQL](https://postgresql.org/) with [pgvector](https://github.com/pgvector/pgvector) extension (vector database)
+- [NEON Database Account](https://neon.tech/) - Cloud PostgreSQL with pgvector (no local installation needed)
 - [OpenAI API key](https://platform.openai.com/api-keys) or [Silicon Flow API key](https://siliconflow.cn/) (for embeddings)
 - Sufficient disk space for crawled content (Apple docs ~800MB+)
 
@@ -214,7 +214,7 @@ Access the management interface at `http://localhost:8001`:
 
 3. Create a `.env` file based on the configuration section below
 
-4. Set up PostgreSQL with pgvector extension
+4. Configure NEON cloud database connection (see Database Setup section)
 
 ### System Components Setup
 
@@ -241,15 +241,26 @@ The system components can run independently:
 - **Crawling System**: Continuously crawls and processes content
 - **Web Interface**: Provides monitoring and management capabilities
 
-## Database Setup
+## NEON Cloud Database Setup
 
-Before running the server, you need to set up PostgreSQL with the pgvector extension:
+This project uses NEON cloud database for scalable, serverless PostgreSQL with pgvector:
 
-1. Install PostgreSQL and the pgvector extension on your system
+1. **Create NEON Account**: Sign up at [neon.tech](https://neon.tech/) (free tier available)
 
-2. Create a database for the project (default: `crawl4ai_rag`)
+2. **Create Database**: Create a new PostgreSQL database with pgvector extension enabled
 
-3. The application will automatically create the necessary tables and indexes on first run
+3. **Get Connection Details**: Copy your NEON connection string from the dashboard
+
+4. **Configure Environment**: Add NEON credentials to your `.env` file (see Configuration section)
+
+5. **Automatic Setup**: The application will automatically create tables and indexes on first run
+
+**Benefits of NEON Cloud Database:**
+- ✅ No local PostgreSQL installation required
+- ✅ Automatic pgvector extension support
+- ✅ Serverless scaling and high availability
+- ✅ Built-in SSL security and connection pooling
+- ✅ Free tier with generous limits for development
 
 
 
@@ -279,12 +290,12 @@ RERANKER_MODEL=Qwen/Qwen3-Reranker-4B
 # Search Configuration
 USE_HYBRID_SEARCH=true  # Combines vector and keyword search
 
-# PostgreSQL Configuration
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DATABASE=crawl4ai_rag
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_postgres_password
+# NEON Cloud Database Configuration
+NEON_HOST=your-neon-host.neon.tech
+NEON_PORT=5432
+NEON_DATABASE=neondb
+NEON_USER=your_neon_user
+NEON_PASSWORD=your_neon_password
 ```
 
 ### Embedding Modes
@@ -580,11 +591,11 @@ For environments that require stdio transport, you can still use the traditional
         "RERANKER_MODEL": "Qwen/Qwen3-Reranker-4B",
         "USE_RERANKING": "true",
         "USE_HYBRID_SEARCH": "true",
-        "POSTGRES_HOST": "localhost",
-        "POSTGRES_PORT": "5432",
-        "POSTGRES_DATABASE": "crawl4ai_rag",
-        "POSTGRES_USER": "postgres",
-        "POSTGRES_PASSWORD": "your_postgres_password"
+        "NEON_HOST": "your-neon-host.neon.tech",
+        "NEON_PORT": "5432",
+        "NEON_DATABASE": "neondb",
+        "NEON_USER": "your_neon_user",
+        "NEON_PASSWORD": "your_neon_password"
       }
     }
   }
@@ -608,11 +619,11 @@ For environments that require stdio transport, you can still use the traditional
                "-e", "LLM_API_KEY",
                "-e", "LLM_BASE_URL",
                "-e", "LLM_MODEL",
-               "-e", "POSTGRES_HOST",
-               "-e", "POSTGRES_PORT",
-               "-e", "POSTGRES_DATABASE",
-               "-e", "POSTGRES_USER",
-               "-e", "POSTGRES_PASSWORD",
+               "-e", "NEON_HOST",
+               "-e", "NEON_PORT",
+               "-e", "NEON_DATABASE",
+               "-e", "NEON_USER",
+               "-e", "NEON_PASSWORD",
                "mcp/crawl4ai"],
       "env": {
         "TRANSPORT": "stdio",

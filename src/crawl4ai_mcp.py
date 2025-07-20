@@ -11,7 +11,7 @@ Features:
 - MCP专用query embedding with SiliconFlow API for optimal consistency
 - Optimized for Apple Developer Documentation content
 - Elegant async architecture with lazy database initialization
-- PostgreSQL vector storage with pgvector extension
+- NEON cloud vector storage with pgvector extension
 - Comprehensive logging system for monitoring and debugging
 
 Architecture:
@@ -55,7 +55,7 @@ import aiohttp
 
 from local_reranker import create_reranker
 
-from database import get_database_client as get_postgres_client, DatabaseOperations
+from database import get_database_client as get_neon_client, DatabaseOperations
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -78,7 +78,7 @@ class DatabaseManager:
             if self._operations is None:
                 logger.debug("🔗 Initializing database connection for MCP server")
                 try:
-                    client = await get_postgres_client()
+                    client = await get_neon_client()
                     self._operations = DatabaseOperations(client)
                     logger.info("✅ Database connection established successfully")
                 except Exception as e:
