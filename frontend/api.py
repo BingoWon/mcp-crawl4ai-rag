@@ -145,15 +145,15 @@ async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str 
                 "last_crawled_at": page["last_crawled_at"]  # 数据库层已转换为ISO格式
             })
 
-            return JSONResponse({
-                "success": True,
-                "data": formatted_pages,
-                "count": len(formatted_pages),
-                "stats": {
-                    "avg_crawl_interval": f"{avg_crawl_interval:.2f}" if avg_crawl_interval else None,
-                    "crawled_pages_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
-                }
-            })
+        return JSONResponse({
+            "success": True,
+            "data": formatted_pages,
+            "count": len(formatted_pages),
+            "stats": {
+                "avg_crawl_interval": f"{avg_crawl_interval:.2f}" if avg_crawl_interval else None,
+                "crawled_pages_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
+            }
+        })
     except Exception as e:
         return JSONResponse({
             "success": False,
