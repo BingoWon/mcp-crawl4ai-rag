@@ -25,6 +25,7 @@ class LocalQwen3Provider(EmbeddingProvider):
         super().__init__(config)
         self.model = None
         self.tokenizer = None
+        self.total_tokens = 0
         self._load_model()
         logger.info(f"✅ {self.config.model_name} loaded on Apple Silicon MPS")
     
@@ -55,6 +56,12 @@ class LocalQwen3Provider(EmbeddingProvider):
     def _format_query(query: str, instruction: str = "Given a web search query, retrieve relevant passages that answer the query") -> str:
         """Format query with instruction (official Qwen3 format)"""
         return f'Instruct: {instruction}\nQuery: {query}'
+
+    def _update_token_stats(self, token_count: int) -> None:
+        """Update token statistics and log progress"""
+        self.total_tokens += token_count
+        tokens_m = self.total_tokens / 1_000_000
+        logger.info(f"📊 Embedding: {tokens_m:.3f}M tokens, ¥{tokens_m * 0.14:.4f}")
     
     @torch.no_grad()
     def encode_single(
@@ -74,6 +81,10 @@ class LocalQwen3Provider(EmbeddingProvider):
             max_length=self.config.max_length,
             return_tensors="pt"
         )
+
+        # 统计token数量
+        self._update_token_stats(batch_dict['input_ids'].shape[1])
+
         batch_dict = {k: v.to(self.config.torch_device) for k, v in batch_dict.items()}
 
         # Get embeddings
