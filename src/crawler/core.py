@@ -55,6 +55,7 @@ from database import get_database_client, DatabaseOperations
 from .apple_stealth_crawler import CrawlerPool
 from utils.logger import setup_logger
 import asyncio
+from urllib.parse import urlparse, urlunparse
 
 logger = setup_logger(__name__)
 
@@ -86,7 +87,7 @@ class BatchCrawler:
         """Initialize database connections and crawler pool"""
         logger.info("Initializing batch crawler with persistent connection pool")
 
-        # Initialize PostgreSQL client
+        # Initialize NEON client
         self.db_client = await get_database_client()
         self.db_operations = DatabaseOperations(self.db_client)
 
@@ -105,20 +106,15 @@ class BatchCrawler:
             self.crawler_pool = None
             logger.info("Persistent crawler pool closed")
 
-    def clean_and_normalize_url(self, url: str) -> str:
-        """清洗和标准化URL - 移除锚点片段和末尾斜杠"""
-        from urllib.parse import urlparse, urlunparse
-
-        parsed = urlparse(url)
-
-        # 清洗：移除fragment（#后面的内容）
-        cleaned_parsed = parsed._replace(fragment='')
-
-        # 标准化：移除末尾斜杠
-        path = cleaned_parsed.path.rstrip('/')
-        normalized_parsed = cleaned_parsed._replace(path=path)
-
-        return urlunparse(normalized_parsed)
+    def clean_and_normalize_urls_batch(self, urls: List[str]) -> List[str]:
+        """批量清洗和标准化URL - 全局最优解"""
+        cleaned_urls = []
+        for url in urls:
+            parsed = urlparse(url)
+            # 清洗：移除fragment，标准化：移除末尾斜杠
+            cleaned_parsed = parsed._replace(fragment='', path=parsed.path.rstrip('/'))
+            cleaned_urls.append(urlunparse(cleaned_parsed))
+        return cleaned_urls
 
 
     async def start_crawling(self, start_url: str) -> None:
@@ -223,13 +219,19 @@ class BatchCrawler:
             logger.info(f"✅ Batch processed: {len(url_content_pairs)} pages ({valid_count} valid content), no new links discovered")
 
     async def _store_discovered_links(self, links: list[str]) -> None:
-        """Store discovered links to database if not exists"""
-        new_count = 0
-        for link in links:
-            clean_link = self.clean_and_normalize_url(link)
-            if clean_link.startswith(self.APPLE_DOCS_URL_PREFIX):
-                if await self.db_operations.insert_url_if_not_exists(clean_link):
-                    new_count += 1
+        """批量存储发现的链接 - 全局最优解"""
+        if not links:
+            return
+
+        # 批量清理和过滤Apple文档链接
+        cleaned_links = self.clean_and_normalize_urls_batch(links)
+        apple_links = [link for link in cleaned_links if link.startswith(self.APPLE_DOCS_URL_PREFIX)]
+
+        if not apple_links:
+            return
+
+        # 批量插入数据库
+        new_count = await self.db_operations.insert_urls_batch(apple_links)
 
         if new_count > 0:
             logger.info(f"Added {new_count} new URLs to crawl queue")

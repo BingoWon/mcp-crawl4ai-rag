@@ -146,7 +146,7 @@ async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str 
             "count": len(formatted_pages),
             "stats": {
                 "avg_crawl_interval": f"{avg_crawl_interval:.2f}" if avg_crawl_interval else None,
-                "crawled_pages_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
+                "data_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
             }
         })
     except Exception as e:
@@ -259,48 +259,44 @@ async def get_stats() -> JSONResponse:
     try:
         client = await get_database_client()
 
-        # 获取pages基础统计
-        pages_count = await client.fetch_all("SELECT COUNT(*) as count FROM pages")
-        chunks_count = await client.fetch_all("SELECT COUNT(*) as count FROM chunks")
-
-        # 获取有content的pages统计
-        pages_with_content = await client.fetch_all("""
-            SELECT COUNT(*) as count FROM pages
-            WHERE content IS NOT NULL AND content != ''
+        # 合并所有统计查询为单个复杂查询 - 全局最优解
+        stats = await client.fetch_all("""
+            WITH page_stats AS (
+                SELECT
+                    COUNT(*) as total_pages,
+                    COUNT(CASE WHEN content IS NOT NULL AND content != '' THEN 1 END) as pages_with_content,
+                    AVG(crawl_count) as avg_crawl_count,
+                    AVG(CASE WHEN content IS NOT NULL AND content != '' THEN process_count END) as avg_process_count,
+                    COUNT(CASE WHEN crawl_count > 0 AND LENGTH(content) < 10 THEN 1 END) as anomalous_pages
+                FROM pages
+            ),
+            chunk_stats AS (
+                SELECT COUNT(*) as total_chunks FROM chunks
+            )
+            SELECT
+                p.total_pages,
+                c.total_chunks,
+                p.pages_with_content,
+                ROUND((p.pages_with_content::float / NULLIF(p.total_pages, 0) * 100)::numeric, 2) as content_percentage,
+                ROUND(p.avg_crawl_count::numeric, 4) as avg_crawl_count,
+                ROUND(p.avg_process_count::numeric, 4) as avg_process_count,
+                p.anomalous_pages
+            FROM page_stats p, chunk_stats c
         """)
 
-        # 获取平均crawl count和process count
-        avg_crawl_count = await client.fetch_all("""
-            SELECT AVG(crawl_count) as avg_count FROM pages
-        """)
+        result = stats[0] if stats else {}
 
-        avg_process_count = await client.fetch_all("""
-            SELECT AVG(process_count) as avg_count FROM pages
-            WHERE content IS NOT NULL AND content != ''
-        """)
-
-        # 获取异常页面统计（已爬取但内容异常短）
-        anomalous_pages = await client.fetch_all("""
-            SELECT COUNT(*) as count FROM pages
-            WHERE crawl_count > 0 AND LENGTH(content) < 10
-        """)
-
-        total_pages = pages_count[0]["count"]
-        content_pages = pages_with_content[0]["count"]
-        content_percentage = (content_pages / total_pages * 100) if total_pages > 0 else 0
-        avg_crawl = float(avg_crawl_count[0]["avg_count"]) if avg_crawl_count[0]["avg_count"] else 0
-        avg_process = float(avg_process_count[0]["avg_count"]) if avg_process_count[0]["avg_count"] else 0
-
+        # 转换Decimal类型为float以支持JSON序列化 - 全局最优解
         return JSONResponse({
             "success": True,
             "data": {
-                "pages_count": total_pages,
-                "chunks_count": chunks_count[0]["count"],
-                "pages_with_content": content_pages,
-                "content_percentage": f"{content_percentage:.2f}",
-                "avg_crawl_count": round(avg_crawl, 4),
-                "avg_process_count": round(avg_process, 4),
-                "anomalous_pages": anomalous_pages[0]["count"]
+                "pages_count": result.get("total_pages", 0),
+                "chunks_count": result.get("total_chunks", 0),
+                "pages_with_content": result.get("pages_with_content", 0),
+                "content_percentage": f"{float(result.get('content_percentage', 0)):.2f}",
+                "avg_crawl_count": float(result.get("avg_crawl_count", 0)),
+                "avg_process_count": float(result.get("avg_process_count", 0)),
+                "anomalous_pages": result.get("anomalous_pages", 0)
             }
         })
     except Exception as e:
@@ -311,9 +307,10 @@ async def get_stats() -> JSONResponse:
                 "pages_count": 0,
                 "chunks_count": 0,
                 "pages_with_content": 0,
-                "content_percentage": 0,
+                "content_percentage": "0.00",
                 "avg_crawl_count": 0,
-                "avg_process_count": 0
+                "avg_process_count": 0,
+                "anomalous_pages": 0
             }
         }, status_code=500)
 

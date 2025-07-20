@@ -78,8 +78,8 @@ class ContentProcessor:
         logger.info("Cleaning up processor resources")
 
     async def start_processing(self) -> None:
-        """开始内容处理循环"""
-        logger.info("Starting pure processor")
+        """开始批量内容处理循环 - 全局最优解"""
+        logger.info("Starting batch processor")
 
         process_count = 0
         while True:
@@ -108,7 +108,7 @@ class ContentProcessor:
                 continue
 
     async def _process_content(self, url: str, content: str) -> None:
-        """处理页面内容：分块 + 嵌入 + 存储"""
+        """处理页面内容：分块 + 嵌入 + 存储 - 全局最优解"""
         logger.info(f"Processing content for: {url}")
 
         # Skip if no content
@@ -117,41 +117,36 @@ class ContentProcessor:
             await self.db_operations.update_process_count(url)
             return
 
-        # Delete old chunks for this URL
+        # Delete old chunks and process content
         await self.db_operations.delete_chunks_by_url(url)
-
-        # Process content: chunking + embedding + storage
         chunks = self.chunker.chunk_text(content)
+
         if not chunks:
             logger.error(f"❌ No chunks generated for {url}")
             await self.db_operations.update_process_count(url)
             return
 
-        # Validate chunk lengths
-        for i, chunk in enumerate(chunks):
-            if len(chunk) < 128:
-                logger.error(f"⚠️ Chunk {i+1} 长度过短: {len(chunk)} 字符 (最小要求: 128) - URL: {url}")
-
+        # Process chunks with embedding
         data_to_insert = []
         for i, chunk in enumerate(chunks):
+            if len(chunk) < 128:
+                logger.error(f"⚠️ Chunk {i+1} 长度过短: {len(chunk)} 字符 - URL: {url}")
+
             logger.info(f"Processing chunk {i+1}/{len(chunks)}, length: {len(chunk)}")
-            if not chunk.strip():
-                logger.error(f"❌ Empty chunk {i+1} for {url}, skipping")
-                continue
-            
-            embedding = create_embedding(chunk)
-            data_to_insert.append({
-                "url": url,
-                "content": chunk,
-                "embedding": str(embedding)
-            })
+            if chunk.strip():
+                embedding = create_embedding(chunk)
+                data_to_insert.append({
+                    "url": url,
+                    "content": chunk,
+                    "embedding": str(embedding)
+                })
 
         if not data_to_insert:
             logger.error(f"❌ No data to insert for {url}")
             await self.db_operations.update_process_count(url)
             return
 
-        # Insert chunks and update process count
+        # Batch operations: insert chunks and update process count
         await self.db_operations.insert_chunks(data_to_insert)
         await self.db_operations.update_process_count(url)
 

@@ -57,13 +57,13 @@ High-level database operations for crawled content and RAG functionality with ba
 """
 
 from typing import List, Dict, Any, Optional
-from .client import PostgreSQLClient
+from .client import NEONClient
 
 
 class DatabaseOperations:
     """High-level database operations"""
     
-    def __init__(self, client: PostgreSQLClient):
+    def __init__(self, client: NEONClient):
         self.client = client
     
     # ============================================================================
@@ -128,6 +128,26 @@ class DatabaseOperations:
         """, url)
         return "INSERT 0 1" in result
 
+    async def insert_urls_batch(self, urls: List[str]) -> int:
+        """批量插入URL，返回实际插入的数量 - 全局最优解"""
+        if not urls:
+            return 0
+
+        # 批量插入，使用ON CONFLICT避免重复
+        await self.client.execute_many("""
+            INSERT INTO pages (url, crawl_count, content, last_crawled_at)
+            VALUES ($1, 0, '', NULL)
+            ON CONFLICT (url) DO NOTHING
+        """, [(url,) for url in urls])
+
+        # 查询实际插入的数量
+        result = await self.client.fetch_one("""
+            SELECT COUNT(*) as count FROM pages
+            WHERE url = ANY($1) AND crawl_count = 0 AND last_crawled_at IS NULL
+        """, urls)
+
+        return result['count'] if result else 0
+
     async def get_urls_batch(self, batch_size: int = 5) -> List[tuple[str, str]]:
         """获取批量待爬取URL和内容"""
         results = await self.client.fetch_all("""
@@ -156,6 +176,26 @@ class DatabaseOperations:
             SET process_count = process_count + 1
             WHERE url = $1
         """, url)
+
+    async def update_process_count_batch(self, urls: List[str]) -> None:
+        """批量更新处理计数 - 全局最优解"""
+        if not urls:
+            return
+
+        await self.client.execute_many("""
+            UPDATE pages
+            SET process_count = process_count + 1
+            WHERE url = $1
+        """, [(url,) for url in urls])
+
+    async def delete_chunks_batch(self, urls: List[str]) -> None:
+        """批量删除URL对应的chunks - 全局最优解"""
+        if not urls:
+            return
+
+        await self.client.execute_many("""
+            DELETE FROM chunks WHERE url = $1
+        """, [(url,) for url in urls])
 
     async def update_pages_batch(self, url_content_pairs: List[tuple[str, str]]) -> tuple[int, int]:
         """批量选择性更新页面内容和爬取计数 - 全局最优解"""

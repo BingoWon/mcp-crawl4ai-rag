@@ -207,16 +207,15 @@ class DatabaseViewer {
   }
 
   updatePageStats(stats) {
-    // 更新页面级统计信息
-    if (stats.avg_crawl_interval !== null) {
-      document.getElementById(
-        "pages-avg-interval"
-      ).textContent = `近${stats.data_count}次爬取平均耗时: ${stats.avg_crawl_interval}秒`;
-    } else {
-      document.getElementById(
-        "pages-avg-interval"
-      ).textContent = `近${stats.data_count}次爬取平均耗时: --`;
-    }
+    // 更新页面级统计信息 - 优雅现代精简
+    const dataCount = stats.data_count || 0;
+    const avgInterval = stats.avg_crawl_interval;
+
+    const intervalText = avgInterval !== null ? `${avgInterval}秒` : "--";
+
+    document.getElementById(
+      "pages-avg-interval"
+    ).textContent = `近${dataCount}次爬取平均耗时: ${intervalText}`;
   }
 
   updateLastUpdateTime() {
