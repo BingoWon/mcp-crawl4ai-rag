@@ -156,31 +156,81 @@ class CrawlerPool:
         """异步上下文管理器出口"""
         await self.close()
 
+    async def _is_crawler_healthy(self, crawler: AsyncWebCrawler) -> bool:
+        """检查爬虫实例健康状态"""
+        try:
+            # 检查浏览器是否仍然连接
+            if not hasattr(crawler, 'browser') or not crawler.browser:
+                return False
+            # 尝试获取浏览器版本来验证连接
+            await crawler.browser.version()
+            return True
+        except Exception:
+            return False
+
+    async def _recreate_crawler(self) -> AsyncWebCrawler:
+        """重新创建健康的爬虫实例"""
+        crawler = AsyncWebCrawler(config=self.browser_config)
+        await crawler.__aenter__()
+        return crawler
+
     async def get_crawler(self) -> AsyncWebCrawler:
-        """从连接池获取爬虫实例"""
-        return await self.available_crawlers.get()
+        """从连接池获取健康的爬虫实例"""
+        while True:
+            crawler = await self.available_crawlers.get()
+            if await self._is_crawler_healthy(crawler):
+                return crawler
+
+            # 清理失效实例并创建新实例
+            try:
+                await crawler.__aexit__(None, None, None)
+            except Exception:
+                pass
+
+            new_crawler = await self._recreate_crawler()
+            logger.info("Recreated failed crawler instance")
+            return new_crawler
 
     async def return_crawler(self, crawler: AsyncWebCrawler) -> None:
         """将爬虫实例归还到连接池"""
         await self.available_crawlers.put(crawler)
     
-    async def crawl_page(self, url: str, css_selector: str = None):
-        """爬取页面内容和链接"""
+    async def crawl_page(self, url: str, css_selector: str = None, max_retries: int = 2):
+        """爬取页面内容和链接，支持自动重试和故障恢复"""
         logger.info(f"Extracting content and links from: {url}")
 
-        crawler = await self.get_crawler()
-        try:
-            config = self._create_config(css_selector)
-            result = await crawler.arun(url=url, config=config)
+        for attempt in range(max_retries + 1):
+            crawler = await self.get_crawler()
+            try:
+                config = self._create_config(css_selector)
+                result = await crawler.arun(url=url, config=config)
 
-            content = result.markdown
-            if css_selector:
-                content = self._post_process_apple_content(content)
+                content = result.markdown or ""
+                if css_selector and content:
+                    content = self._post_process_apple_content(content)
 
-            logger.info(f"Content and links extracted from: {url}")
-            return content, result.links
-        finally:
-            await self.return_crawler(crawler)
+                await self.return_crawler(crawler)
+                logger.info(f"Content and links extracted from: {url}")
+                return content, result.links
+
+            except Exception as e:
+                error_msg = str(e)
+                is_connection_error = any(keyword in error_msg.lower() for keyword in [
+                    'connection closed', 'pipe closed', 'browsercontext.new_page'
+                ])
+
+                if is_connection_error and attempt < max_retries:
+                    logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries + 1} for {url}: {error_msg}")
+                    # 清理失效实例，不归还到连接池
+                    try:
+                        await crawler.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+                    continue
+                else:
+                    logger.error(f"Failed to crawl {url} after {attempt + 1} attempts: {error_msg}")
+                    await self.return_crawler(crawler)
+                    raise
 
     async def crawl_pages_batch(self, url_selector_pairs: List[tuple[str, str]]):
         """批量爬取页面"""
@@ -193,6 +243,8 @@ class CrawlerPool:
 
     def _post_process_apple_content(self, content: str) -> str:
         """后处理Apple文档内容，清理导航元素、图片内容和不需要的章节"""
+        if not content:
+            return ""
         lines = content.split('\n')
         clean_lines = []
 
