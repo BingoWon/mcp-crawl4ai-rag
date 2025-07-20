@@ -67,10 +67,10 @@ async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str 
         client = await get_database_client()
 
         # 构建查询条件
-        where_clause = ""
+        where_clause = "WHERE last_crawled_at IS NOT NULL"
         params = []
         if search:
-            where_clause = "WHERE url ILIKE $1 OR content ILIKE $1"
+            where_clause += " AND (url ILIKE $1 OR content ILIKE $1)"
             params.append(f"%{search}%")
 
         # 构建排序 - 优雅现代精简
@@ -79,21 +79,16 @@ async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str 
         sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
         # 获取前100条数据 - 固定数量，无分页
+        query = f"""
+            SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
+            FROM pages {where_clause}
+            ORDER BY {sort_column} {sort_order}
+            LIMIT 100
+        """
+
         if search:
-            query = f"""
-                SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
-                FROM pages {where_clause}
-                ORDER BY {sort_column} {sort_order}
-                LIMIT 100
-            """
             pages = await client.fetch_all(query, params[0])
         else:
-            query = f"""
-                SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
-                FROM pages
-                ORDER BY {sort_column} {sort_order}
-                LIMIT 100
-            """
             pages = await client.fetch_all(query)
 
         # 计算平均爬取间隔时间（只包含已爬取的页面）- 优雅现代精简
