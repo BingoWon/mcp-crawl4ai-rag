@@ -32,7 +32,7 @@ class DatabaseViewer {
   async loadPages() {
     try {
       const response = await fetch(
-        `${this.apiBase}/pages?sort=created_at&order=desc`
+        `${this.apiBase}/pages?sort=last_crawled_at&order=desc`
       );
       const result = await response.json();
 
