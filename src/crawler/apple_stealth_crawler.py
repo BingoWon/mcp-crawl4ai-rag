@@ -96,6 +96,10 @@ class CrawlerPool:
         """创建完美伪装的浏览器配置"""
         return BrowserConfig(
             headless=True,  # 静默运行，不弹出浏览器窗口
+            text_only=True,
+            javascript_enabled=True,
+            light_mode=True,
+            browser_type="chromium",
             user_agent=self.USER_AGENT,
             viewport_width=1920,
             viewport_height=1080,
@@ -140,11 +144,18 @@ class CrawlerPool:
     def _create_config(self, css_selector=None) -> CrawlerRunConfig:
         """创建爬虫配置"""
         return CrawlerRunConfig(
-            cache_mode=CacheMode.BYPASS,
-            delay_before_return_html=1.5,
+            cache_mode=CacheMode.ENABLED, # 启用缓存，因为我们本身每个页面就要爬取两次，一次是获取内容，一次是获取链接
             page_timeout=10000,
             css_selector=css_selector,
-            exclude_external_links=True,   
+            exclude_external_links=True,  
+            only_text=True,
+            wait_until="domcontentloaded",
+            scan_full_page=False,
+            process_iframes=False,
+            screenshot=False,
+            pdf=False,
+            capture_mhtml=False,
+            exclude_all_images=True,
         )
     
     async def __aenter__(self):
