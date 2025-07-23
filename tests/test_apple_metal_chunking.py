@@ -35,7 +35,15 @@ async def test_apple_metal_chunking():
         async with crawler:
             from crawler.apple_stealth_crawler import CrawlerPool
             async with CrawlerPool() as stealth_crawler:
-                clean_content, _ = await stealth_crawler.crawl_page(url, "#app-main")
+                # 先尝试不使用CSS选择器获取完整页面内容
+                clean_content, _ = await stealth_crawler.crawl_page(url, None)
+                print(f"🔍 完整页面内容长度: {len(clean_content)} 字符")
+
+                # 如果内容太少，再尝试使用CSS选择器
+                if len(clean_content) < 100:
+                    print("⚠️ 完整页面内容太少，尝试使用CSS选择器...")
+                    clean_content, _ = await stealth_crawler.crawl_page(url, "#app-main")
+                    print(f"🔍 CSS选择器内容长度: {len(clean_content)} 字符")
 
         if not clean_content:
             print("❌ 爬取失败或内容为空")
