@@ -29,8 +29,8 @@ High-level database operations for crawled content and RAG functionality with ba
 本模块实现了高效的批量数据库操作，支持批量爬取器的性能需求：
 
 **批量URL获取：get_urls_batch() 方法**
-- 一次查询获取多个待爬取URL和内容状态
-- 返回格式：List[tuple[str, str]] = [(url, content), ...]
+- 一次查询获取多个待爬取URL
+- 返回格式：List[str] = [url, ...]
 - 减少数据库查询次数，提高批量处理效率
 
 **批量内容更新：update_pages_batch() 方法**
@@ -148,15 +148,15 @@ class DatabaseOperations:
 
         return result['count'] if result else 0
 
-    async def get_urls_batch(self, batch_size: int = 5) -> List[tuple[str, str]]:
-        """获取批量待爬取URL和内容"""
+    async def get_urls_batch(self, batch_size: int = 5) -> List[str]:
+        """获取批量待爬取URL"""
         results = await self.client.fetch_all("""
-            SELECT url, content FROM pages
+            SELECT url FROM pages
             WHERE crawl_count = (SELECT MIN(crawl_count) FROM pages)
             ORDER BY last_crawled_at ASC
             LIMIT $1
         """, batch_size)
-        return [(row['url'], row['content']) for row in results]
+        return [row['url'] for row in results]
 
     async def get_process_url(self) -> Optional[tuple[str, str]]:
         """获取待处理的URL和内容"""

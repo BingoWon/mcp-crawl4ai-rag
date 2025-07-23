@@ -47,7 +47,7 @@ BatchCrawler - 简化双重爬取批量爬虫
 - 数据库优化：批量操作减少数据库交互次数
 """
 
-from typing import List, Tuple
+from typing import List
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -133,17 +133,17 @@ class BatchCrawler:
         batch_count = 0
         while True:
             try:
-                # Get batch of URLs and content to crawl (minimum crawl_count)
-                batch_results = await self.db_operations.get_urls_batch(self.batch_size)
-                if not batch_results:
+                # Get batch of URLs to crawl (minimum crawl_count)
+                batch_urls = await self.db_operations.get_urls_batch(self.batch_size)
+                if not batch_urls:
                     logger.info("No URLs to crawl")
                     break
 
                 batch_count += 1
-                logger.info(f"=== Batch #{batch_count}: Processing {len(batch_results)} URLs ===")
+                logger.info(f"=== Batch #{batch_count}: Processing {len(batch_urls)} URLs ===")
 
                 # Process batch concurrently
-                await self._process_batch(batch_results)
+                await self._process_batch(batch_urls)
 
             except KeyboardInterrupt:
                 logger.info("Batch crawl interrupted by user")
@@ -152,9 +152,9 @@ class BatchCrawler:
                 logger.error(f"Batch crawl error: {e}")
                 continue
 
-    async def _process_batch(self, batch_results: List[Tuple[str, str]]) -> None:
+    async def _process_batch(self, batch_urls: List[str]) -> None:
         """优化的双重爬取批量处理 - 使用持久连接池"""
-        logger.info(f"Batch processing: {len(batch_results)} URLs with persistent crawler pool")
+        logger.info(f"Batch processing: {len(batch_urls)} URLs with persistent crawler pool")
 
         if not self.crawler_pool:
             raise RuntimeError("Crawler pool not initialized. Use async with statement.")
@@ -162,7 +162,7 @@ class BatchCrawler:
         all_tasks = []
 
         # 为每个URL创建两个任务：内容爬取 + 链接爬取
-        for url, _ in batch_results:
+        for url in batch_urls:
             # 第一次爬取：带CSS选择器，获取内容
             content_task = self.crawler_pool.crawl_page(url, "#app-main")
             all_tasks.append((url, content_task, "content"))
@@ -175,9 +175,9 @@ class BatchCrawler:
         results = await asyncio.gather(*[task for _, task, _ in all_tasks], return_exceptions=True)
 
         # 处理结果
-        await self._save_dual_results(batch_results, results, all_tasks)
+        await self._save_dual_results(batch_urls, results, all_tasks)
 
-    async def _save_dual_results(self, batch_results: List[Tuple[str, str]],
+    async def _save_dual_results(self, batch_urls: List[str],
                                crawl_results: List, all_tasks: List) -> None:
         """保存双重爬取结果到数据库"""
         url_content_pairs = []
@@ -202,7 +202,7 @@ class BatchCrawler:
                     all_discovered_links.extend(extracted_links)
 
         # 准备内容更新数据
-        for url, _ in batch_results:
+        for url in batch_urls:
             content = content_results.get(url, "")
             url_content_pairs.append((url, content))
 

@@ -45,6 +45,7 @@ from typing import Dict, List
 import asyncio
 from utils.logger import setup_logger
 import re
+import browser_cookie3
 
 logger = setup_logger(__name__)
 
@@ -58,6 +59,7 @@ class CrawlerPool:
     def __init__(self, pool_size: int = 3):
         """初始化Apple隐蔽爬虫连接池"""
         self.pool_size = pool_size
+        self.apple_cookies = self._get_apple_cookies()
         self.browser_config = self._create_stealth_browser_config()
         self.crawler_pool: List[AsyncWebCrawler] = []
         self.available_crawlers: asyncio.Queue = asyncio.Queue()
@@ -92,18 +94,40 @@ class CrawlerPool:
         self._initialized = False
         logger.info("Apple stealth crawler pool closed")
 
+    def _get_apple_cookies(self) -> Dict[str, str]:
+        """从Edge浏览器获取Apple网站Cookie"""
+        cookies = browser_cookie3.edge(domain_name='apple.com')
+        cookie_dict = {}
+
+        for cookie in cookies:
+            if 'apple.com' in cookie.domain or 'developer.apple.com' in cookie.domain:
+                cookie_dict[cookie.name] = cookie.value
+
+        if cookie_dict:
+            logger.info(f"Successfully extracted {len(cookie_dict)} Apple cookies from Edge")
+
+        return cookie_dict
+
     def _create_stealth_browser_config(self) -> BrowserConfig:
         """创建完美伪装的浏览器配置"""
+        headers = self._get_apple_headers()
+
+        # 如果有Apple Cookie，添加到请求头中
+        if self.apple_cookies:
+            cookie_string = '; '.join([f"{name}={value}" for name, value in self.apple_cookies.items()])
+            headers['Cookie'] = cookie_string
+            logger.info(f"Added {len(self.apple_cookies)} Apple cookies to browser headers")
+
         return BrowserConfig(
             headless=True,  # 静默运行，不弹出浏览器窗口
-            text_only=True,
-            javascript_enabled=True,
+            text_mode=True,
+            java_script_enabled=False,
             light_mode=True,
             browser_type="chromium",
             user_agent=self.USER_AGENT,
             viewport_width=1920,
             viewport_height=1080,
-            headers=self._get_apple_headers(),
+            headers=headers,
             extra_args=[
                 "--disable-blink-features=AutomationControlled",
                 "--exclude-switches=enable-automation",
@@ -144,10 +168,10 @@ class CrawlerPool:
     def _create_config(self, css_selector=None) -> CrawlerRunConfig:
         """创建爬虫配置"""
         return CrawlerRunConfig(
-            cache_mode=CacheMode.ENABLED, # 启用缓存，因为我们本身每个页面就要爬取两次，一次是获取内容，一次是获取链接
+            cache_mode=CacheMode.DISABLED, # 禁用缓存以获取新鲜内容
             page_timeout=10000,
             css_selector=css_selector,
-            exclude_external_links=True,  
+            exclude_external_links=True,
             only_text=True,
             wait_until="domcontentloaded",
             scan_full_page=False,
