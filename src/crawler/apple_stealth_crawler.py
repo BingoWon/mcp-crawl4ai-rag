@@ -121,7 +121,7 @@ class CrawlerPool:
         return BrowserConfig(
             headless=True,  # 静默运行，不弹出浏览器窗口
             text_mode=True,
-            java_script_enabled=False,
+            java_script_enabled=True, # Apple的现代网站需要JavaScript来渲染内容
             light_mode=True,
             browser_type="chromium",
             user_agent=self.USER_AGENT,
@@ -168,11 +168,12 @@ class CrawlerPool:
     def _create_config(self, css_selector=None) -> CrawlerRunConfig:
         """创建爬虫配置"""
         return CrawlerRunConfig(
-            cache_mode=CacheMode.DISABLED, # 禁用缓存以获取新鲜内容
+            cache_mode=CacheMode.BYPASS, # 必须使用 BYPASS！！！
+            delay_before_return_html=1.5,
             page_timeout=10000,
             css_selector=css_selector,
             exclude_external_links=True,
-            only_text=True,
+            only_text=False,
             wait_until="domcontentloaded",
             scan_full_page=False,
             process_iframes=False,
