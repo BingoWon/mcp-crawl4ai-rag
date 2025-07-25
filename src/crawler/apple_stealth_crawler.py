@@ -169,7 +169,7 @@ class CrawlerPool:
         """创建爬虫配置"""
         return CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS, # 必须使用 BYPASS！！！
-            delay_before_return_html=1.5,
+            delay_before_return_html=5,
             page_timeout=10000,
             css_selector=css_selector,
             exclude_external_links=True,
