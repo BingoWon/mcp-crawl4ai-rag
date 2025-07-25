@@ -168,8 +168,10 @@ class BatchCrawler:
             all_tasks.append((url, content_task, "content"))
 
             # 第二次爬取：不带CSS选择器，获取链接
-            links_task = self.crawler_pool.crawl_page(url)
-            all_tasks.append((url, links_task, "links"))
+            # links_task = self.crawler_pool.crawl_page(url)
+            # all_tasks.append((url, links_task, "links"))
+            # TODO: 只爬取一次则通过下面的配置：
+            all_tasks.append((url, content_task, "links"))
 
         # 并发执行所有任务
         results = await asyncio.gather(*[task for _, task, _ in all_tasks], return_exceptions=True)
