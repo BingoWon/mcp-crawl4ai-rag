@@ -149,25 +149,52 @@ class DatabaseOperations:
         return result['count'] if result else 0
 
     async def get_urls_batch(self, batch_size: int = 5) -> List[str]:
-        """获取批量待爬取URL"""
-        results = await self.client.fetch_all("""
-            SELECT url FROM pages
-            WHERE crawl_count = (SELECT MIN(crawl_count) FROM pages)
-            ORDER BY last_crawled_at ASC
-            LIMIT $1
-        """, batch_size)
-        return [row['url'] for row in results]
+        """原子性获取批量待爬取URL - 分布式安全"""
+        # 使用PostgreSQL advisory lock确保原子性
+        lock_id = 12345  # 固定锁ID用于URL获取
+
+        async with self.client.pool.acquire() as conn:
+            # 获取advisory lock
+            await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
+
+            try:
+                # 在锁保护下获取URL
+                results = await conn.fetch("""
+                    SELECT url FROM pages
+                    ORDER BY crawl_count ASC, last_crawled_at ASC
+                    LIMIT $1
+                """, batch_size)
+
+                return [row['url'] for row in results]
+
+            finally:
+                # 释放advisory lock
+                await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
     async def get_process_url(self) -> Optional[tuple[str, str]]:
-        """获取待处理的URL和内容"""
-        result = await self.client.fetch_one("""
-            SELECT url, content FROM pages
-            WHERE process_count = (SELECT MIN(process_count) FROM pages WHERE content IS NOT NULL AND content != '')
-              AND content IS NOT NULL AND content != ''
-            ORDER BY last_crawled_at DESC
-            LIMIT 1
-        """)
-        return (result['url'], result['content']) if result else None
+        """原子性获取待处理的URL和内容 - 分布式安全"""
+        lock_id = 12346  # 不同的锁ID用于处理器
+
+        async with self.client.pool.acquire() as conn:
+            # 获取advisory lock
+            await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
+
+            try:
+                # 在锁保护下获取URL和内容
+                result = await conn.fetchrow("""
+                    SELECT url, content FROM pages
+                    WHERE content IS NOT NULL AND content != ''
+                    ORDER BY process_count ASC, last_crawled_at DESC
+                    LIMIT 1
+                """)
+
+                if result:
+                    return (result['url'], result['content'])
+                return None
+
+            finally:
+                # 释放advisory lock
+                await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
     async def update_process_count(self, url: str) -> None:
         """更新处理计数"""
