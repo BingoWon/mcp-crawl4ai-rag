@@ -95,18 +95,24 @@ class CrawlerPool:
         logger.info("Apple stealth crawler pool closed")
 
     def _get_apple_cookies(self) -> Dict[str, str]:
-        """从Edge浏览器获取Apple网站Cookie"""
-        cookies = browser_cookie3.edge(domain_name='apple.com')
-        cookie_dict = {}
+        """从Edge浏览器获取Apple网站Cookie，Edge不存在时跳过"""
+        try:
+            cookies = browser_cookie3.edge(domain_name='apple.com')
+            cookie_dict = {}
 
-        for cookie in cookies:
-            if 'apple.com' in cookie.domain or 'developer.apple.com' in cookie.domain:
-                cookie_dict[cookie.name] = cookie.value
+            for cookie in cookies:
+                if 'apple.com' in cookie.domain or 'developer.apple.com' in cookie.domain:
+                    cookie_dict[cookie.name] = cookie.value
 
-        if cookie_dict:
-            logger.info(f"Successfully extracted {len(cookie_dict)} Apple cookies from Edge")
+            if cookie_dict:
+                logger.info(f"Successfully extracted {len(cookie_dict)} Apple cookies from Edge")
 
-        return cookie_dict
+            return cookie_dict
+
+        except Exception as e:
+            logger.info(f"Edge browser not found or cookie extraction failed: {e}")
+            logger.info("Continuing without browser cookies")
+            return {}
 
     def _create_stealth_browser_config(self) -> BrowserConfig:
         """创建完美伪装的浏览器配置"""
