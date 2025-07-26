@@ -12,10 +12,10 @@ from datetime import datetime
 # 添加src目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from database.client import NEONClient
+from database.client import DatabaseClient
 
 
-async def query_page_content(client: NEONClient, url: str):
+async def query_page_content(client: DatabaseClient, url: str):
     """查询pages表中的内容"""
     result = await client.fetch_one("""
         SELECT url, content, crawl_count, created_at, last_crawled_at
@@ -25,7 +25,7 @@ async def query_page_content(client: NEONClient, url: str):
     return result
 
 
-async def query_chunks_content(client: NEONClient, url: str):
+async def query_chunks_content(client: DatabaseClient, url: str):
     """查询chunks表中的内容"""
     results = await client.fetch_all("""
         SELECT id, url, content, created_at
@@ -93,7 +93,7 @@ async def main():
     print(f"正在查询URL: {url}")
     
     try:
-        async with NEONClient() as client:
+        async with DatabaseClient() as client:
             # 查询pages表
             print("查询pages表...")
             page_data = await query_page_content(client, url)

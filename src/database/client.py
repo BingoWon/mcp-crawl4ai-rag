@@ -1,38 +1,36 @@
 """
-NEON Cloud Database Client - Modern Async Interface
+Database Client - Modern Async Interface
 
-This module provides a high-performance async NEON PostgreSQL client optimized for
-cloud-native vector operations and Apple Developer Documentation storage.
+This module provides a high-performance async PostgreSQL client optimized for
+vector operations and Apple Developer Documentation storage.
 
 Features:
-- Cloud-native async connection pool with SSL
+- Async connection pool for high performance
 - pgvector extension support for vector similarity search
-- Optimized for NEON cloud database performance
 - JSON-serializable result formatting
 - Comprehensive error handling and logging
-- SSL-secured connections for cloud deployment
 
 Database Schema Support:
 - pages: Full page content with metadata (id, url, content, crawl_count)
 - chunks: Document fragments with embeddings (id, url, content, embedding)
 - pgvector: Vector similarity operations with cosine distance
 
-Cloud Performance:
-- SSL-secured connection pooling
-- Async-first design for cloud concurrency
-- Efficient vector operations with NEON optimization
+Performance:
+- Connection pooling for efficiency
+- Async-first design for concurrency
+- Efficient vector operations
 - Automatic serialization of UUID and datetime objects
 
 Usage:
 Provides execute_query() method for parameterized SQL execution with
-automatic result serialization and cloud-optimized error handling.
+automatic result serialization and error handling.
 """
 
 import asyncpg
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from .config import NEONConfig
+from .config import DatabaseConfig
 
 
 def serialize_db_value(value):
@@ -52,11 +50,11 @@ def serialize_db_row(row) -> Dict[str, Any]:
     return {key: serialize_db_value(value) for key, value in row.items()}
 
 
-class NEONClient:
-    """Modern async NEON cloud database client with pgvector support"""
+class DatabaseClient:
+    """Modern async PostgreSQL database client with pgvector support"""
 
-    def __init__(self, config: Optional[NEONConfig] = None):
-        self.config = config or NEONConfig.from_env()
+    def __init__(self, config: Optional[DatabaseConfig] = None):
+        self.config = config or DatabaseConfig.from_env()
         self.pool: Optional[asyncpg.Pool] = None
         self._initialized = False
     
@@ -71,12 +69,12 @@ class NEONClient:
             self._initialized = True
             from utils.logger import setup_logger
             logger = setup_logger(__name__)
-            logger.info(f"✅ NEON client initialized: {self.config.host}:{self.config.port}/{self.config.database}")
+            logger.info(f"✅ Database client initialized: {self.config.host}:{self.config.port}/{self.config.database}")
 
         except Exception as e:
             from utils.logger import setup_logger
             logger = setup_logger(__name__)
-            logger.error(f"❌ Failed to initialize NEON client: {e}")
+            logger.error(f"❌ Failed to initialize database client: {e}")
             raise
     
     async def close(self) -> None:

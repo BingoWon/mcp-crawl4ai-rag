@@ -42,6 +42,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # 添加src目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))

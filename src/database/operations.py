@@ -57,13 +57,13 @@ High-level database operations for crawled content and RAG functionality with ba
 """
 
 from typing import List, Dict, Any, Optional
-from .client import NEONClient
+from .client import DatabaseClient
 
 
 class DatabaseOperations:
     """High-level database operations"""
-    
-    def __init__(self, client: NEONClient):
+
+    def __init__(self, client: DatabaseClient):
         self.client = client
     
     # ============================================================================

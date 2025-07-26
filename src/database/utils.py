@@ -1,31 +1,31 @@
 """
-NEON Cloud Database Utilities
-NEON云数据库工具
+Database Utilities
+数据库工具
 
-Global NEON database client management and utility functions.
-全局NEON数据库客户端管理和工具函数。
+Global database client management and utility functions.
+全局数据库客户端管理和工具函数。
 """
 
 from typing import Optional
-from .client import NEONClient
-from .config import NEONConfig
+from .client import DatabaseClient
+from .config import DatabaseConfig
 from .operations import DatabaseOperations
 
 
 # ============================================================================
-# GLOBAL NEON CLIENT MANAGEMENT
+# GLOBAL DATABASE CLIENT MANAGEMENT
 # ============================================================================
 
-_database_client: Optional[NEONClient] = None
+_database_client: Optional[DatabaseClient] = None
 _database_operations: Optional[DatabaseOperations] = None
 
 
-async def get_database_client() -> NEONClient:
-    """Get or create the global NEON client instance"""
+async def get_database_client() -> DatabaseClient:
+    """Get or create the global database client instance"""
     global _database_client
     if _database_client is None:
-        config = NEONConfig.from_env()
-        _database_client = NEONClient(config)
+        config = DatabaseConfig.from_env()
+        _database_client = DatabaseClient(config)
         await _database_client.initialize()
     return _database_client
 
