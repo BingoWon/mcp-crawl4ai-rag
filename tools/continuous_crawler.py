@@ -27,8 +27,8 @@ from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-# Hyperparameter: Starting URL for crawling
-TARGET_URL = "https://developer.apple.com/documentation/"
+# Configuration from environment variables
+TARGET_URL = os.getenv("TARGET_URL", "https://developer.apple.com/documentation/")
 
 
 async def main():
@@ -39,7 +39,7 @@ async def main():
 
     try:
         # Start both crawler and processor concurrently
-        async with BatchCrawler(batch_size=30, max_concurrent=30) as crawler, ContentProcessor() as processor:
+        async with BatchCrawler() as crawler, ContentProcessor() as processor:
             await asyncio.gather(
                 crawler.start_crawling(TARGET_URL),
                 processor.start_processing()

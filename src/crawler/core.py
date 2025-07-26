@@ -49,6 +49,7 @@ BatchCrawler - 简化双重爬取批量爬虫
 
 from typing import List
 import sys
+import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from database import get_database_client, DatabaseOperations
@@ -66,10 +67,10 @@ class BatchCrawler:
     # Apple文档URL常量
     APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
 
-    def __init__(self, batch_size: int = 5, max_concurrent: int = 3):
-        """Initialize batch crawler with optimized connection pool"""
-        self.batch_size = batch_size
-        self.max_concurrent = max_concurrent
+    def __init__(self):
+        """Initialize batch crawler with environment-based configuration"""
+        self.batch_size = int(os.getenv("CRAWLER_BATCH_SIZE", "30"))
+        self.max_concurrent = int(os.getenv("CRAWLER_MAX_CONCURRENT", "30"))
         self.db_client = None
         self.db_operations = None
         self.crawler_pool = None
