@@ -13,7 +13,7 @@ A high-performance implementation of the [Model Context Protocol (MCP)](https://
 - **🔍 Hybrid Search**: Combines vector similarity with keyword matching for comprehensive results
 - **⚡ Smart Reranking**: Qwen3-Reranker-4B integration with automatic fallback mechanisms
 - **🍎 Apple-Optimized**: Specialized for Apple Developer Documentation content structure
-- **☁️ NEON Cloud Database**: Cloud-native PostgreSQL with pgvector for scalable vector storage
+- **🗄️ PostgreSQL Database**: Remote PostgreSQL with pgvector for scalable vector storage
 - **🔧 Modern Architecture**: FastMCP 2.9.0 with Streamable HTTP transport
 
 ## 🏗️ **Architecture Overview**
@@ -21,18 +21,21 @@ A high-performance implementation of the [Model Context Protocol (MCP)](https://
 This system implements a **clean separation of concerns**:
 
 ### 🎯 **MCP Server (Core RAG Service)**
+
 - **Single Responsibility**: Dedicated RAG query service via Model Context Protocol
 - **Lazy Initialization**: DatabaseManager with async connection pool management
 - **High Performance**: Optimized for fast query responses with minimal overhead
 - **Type Safety**: Comprehensive type annotations and error handling
 
 ### 🕷️ **Independent Crawling System**
+
 - **Batch Processing**: Intelligent batch crawling with connection pool reuse
 - **Apple-Specialized**: Optimized for Apple Developer Documentation with anti-detection
 - **Smart Discovery**: Automatic link discovery and URL pool expansion
 - **Performance**: 3-5x faster crawling through concurrent processing
 
 ### 🖥️ **Web Management Interface**
+
 - **Real-time Monitoring**: Live statistics and crawling progress
 - **Content Management**: Browse and search crawled pages and chunks
 - **System Health**: Database storage monitoring and performance metrics
@@ -44,24 +47,28 @@ The primary goal is to provide a robust, production-ready RAG service that can b
 This system provides a complete solution for intelligent web crawling and advanced RAG queries through a **dual-architecture design**:
 
 ### 🎯 **MCP Server (Pure RAG Service)**
+
 - **Single Responsibility**: Dedicated RAG query service via Model Context Protocol
 - **Advanced Search**: Vector search, hybrid search, and intelligent reranking
 - **High Performance**: Optimized for fast query responses without crawling overhead
 - **Smart Reranking**: Qwen3-Reranker-4B integration with automatic fallback
 
 ### 🕷️ **Independent Crawling System**
+
 - **Batch Processing**: Intelligent batch crawling with connection pool reuse
 - **Smart Discovery**: Automatic link discovery and URL pool expansion
 - **Apple-Optimized**: Specialized for Apple Developer Documentation with anti-detection
 - **Performance**: 3-5x faster crawling through concurrent processing
 
 ### 🖥️ **Web Management Interface**
+
 - **Real-time Monitoring**: Live statistics and crawling progress
 - **Content Management**: Browse and search crawled pages and chunks
 - **System Health**: Database storage monitoring and anomaly detection
 - **User-Friendly**: Modern web interface for system administration
 
 The system includes several advanced RAG strategies:
+
 - **Hybrid Search** combining vector and keyword search
 - **Smart Reranking** using Qwen3-Reranker-4B with automatic fallback
 - **Contextual Embeddings** for enriched semantic understanding
@@ -85,6 +92,7 @@ The Crawl4AI RAG MCP server is just the beginning. Here's where we're headed:
 ## 🚀 **Technical Features**
 
 ### 🧠 **Advanced RAG Capabilities**
+
 - **Vector Similarity Search**: Qwen3-Embedding-4B with 2560-dimension embeddings
 - **Apple Silicon Optimization**: MPS acceleration for local embedding generation
 - **Hybrid Search Strategy**: Combines semantic vector search with keyword matching
@@ -93,22 +101,25 @@ The Crawl4AI RAG MCP server is just the beginning. Here's where we're headed:
 - **Type-Safe Implementation**: Comprehensive type annotations and error handling
 
 ### 🏗️ **Modern Architecture**
+
 - **FastMCP 2.9.0**: Streamable HTTP transport for optimal performance
 - **Async-First Design**: All operations use async/await for high concurrency
 - **Lazy Initialization**: DatabaseManager with on-demand connection creation
 - **Clean Separation**: Independent MCP server and crawling system components
 - **Production-Ready**: Comprehensive error handling and graceful degradation
-- **MCP专用Embedding**: Dedicated SiliconFlow API integration for query embedding
+- **MCP 专用 Embedding**: Dedicated SiliconFlow API integration for query embedding
 - **Structured Logging**: Multi-level logging system with service and business event tracking
 
-### 🗄️ **Cloud Data Management**
-- **NEON Cloud Database**: Serverless PostgreSQL with pgvector for vector storage
+### 🗄️ **Database Management**
+
+- **PostgreSQL Database**: Remote PostgreSQL with pgvector for vector storage
 - **Intelligent Chunking**: Header-based content segmentation for Apple docs
-- **Cloud Vector Storage**: Scalable embedding storage in NEON cloud
-- **SSL Connection Pooling**: Secure cloud database connection management
-- **Cloud-Optimized Operations**: High-performance bulk operations for cloud deployment
+- **Vector Storage**: Scalable embedding storage with pgvector extension
+- **SSL Connection Pooling**: Secure database connection management
+- **Optimized Operations**: High-performance bulk operations for production deployment
 
 ### 🍎 **Apple Documentation Optimization**
+
 - **Content Extraction**: Specialized parsing for Apple Developer Documentation
 - **Link Discovery**: Intelligent URL discovery and expansion
 - **Anti-Detection**: Optimized crawling strategies for Apple websites
@@ -116,6 +127,7 @@ The Crawl4AI RAG MCP server is just the beginning. Here's where we're headed:
 - **Structured Processing**: Preserves document hierarchy and formatting
 
 ### 🔧 **Developer Experience**
+
 - **Single MCP Tool**: Simple `perform_rag_query` interface
 - **JSON Responses**: Structured results with URLs, content, and similarity scores
 - **Comprehensive Logging**: Multi-level logging system for complete observability
@@ -123,6 +135,7 @@ The Crawl4AI RAG MCP server is just the beginning. Here's where we're headed:
 - **Error Handling**: Graceful error responses with detailed error messages
 
 ### 📊 **Logging Architecture**
+
 - **Service Level**: Server startup, database connections, module initialization
 - **Business Level**: RAG query processing, search operations, result formatting
 - **Technical Level**: Embedding generation, API calls, performance metrics
@@ -138,10 +151,12 @@ The MCP server provides a single, powerful RAG query tool:
 **Advanced RAG queries with intelligent document retrieval from Apple Developer Documentation**
 
 #### Parameters:
+
 - **`query`** (string): Natural language search query
 - **`match_count`** (integer, optional): Number of results to return (default: 5)
 
 #### Features:
+
 - **Vector Similarity Search**: Uses Qwen3-Embedding-4B for semantic understanding
 - **Hybrid Search**: Combines vector similarity with keyword matching when enabled
 - **Smart Reranking**: Qwen3-Reranker-4B with automatic fallback to embedding similarity
@@ -149,6 +164,7 @@ The MCP server provides a single, powerful RAG query tool:
 - **Structured Results**: Returns JSON with URLs, content snippets, and similarity scores
 
 #### Example Response:
+
 ```json
 {
   "success": true,
@@ -167,108 +183,144 @@ The MCP server provides a single, powerful RAG query tool:
 ```
 
 #### Error Handling:
+
 Returns structured error responses with detailed error messages for debugging and monitoring.
 
 ## System Components
 
 ### Independent Crawling System
+
 The crawling functionality is provided by an independent system (`tools/continuous_crawler.py`):
+
 - **Batch Processing**: Intelligent batch crawling with connection pooling
 - **Smart Discovery**: Automatic link discovery and URL expansion
 - **Performance Optimized**: 3-5x faster through concurrent processing
 - **Apple Specialized**: Optimized for Apple Developer Documentation
 
 ### Web Management Interface
+
 Access the management interface at `http://localhost:8001`:
+
 - **Real-time Dashboard**: System statistics and monitoring
 - **Content Browser**: Search and browse crawled content
 - **Storage Analytics**: Database usage and anomaly detection
 - **System Health**: Performance metrics and error tracking
 
-
-
-
-
 ## Prerequisites
 
 - [Python 3.12+](https://www.python.org/downloads/) for running the system
-- [NEON Database Account](https://neon.tech/) - Cloud PostgreSQL with pgvector (no local installation needed)
+- Remote PostgreSQL Database with pgvector extension (cloud or self-hosted)
 - [OpenAI API key](https://platform.openai.com/api-keys) or [Silicon Flow API key](https://siliconflow.cn/) (for embeddings)
 - Sufficient disk space for crawled content (Apple docs ~800MB+)
 
-
 ## Installation
 
-### Quick Start
+### 🚀 One-Command Setup (Recommended)
 
-1. Clone this repository:
+```bash
+git clone https://github.com/coleam00/mcp-crawl4ai-rag.git
+cd mcp-crawl4ai-rag
+make install
+```
+
+This will automatically:
+
+- Install all Python dependencies via `uv sync`
+- Install only Chromium browser (optimized for this project)
+- Set up system dependencies for Chromium
+
+### 📋 Manual Setup
+
+1. **Clone repository**:
+
    ```bash
    git clone https://github.com/coleam00/mcp-crawl4ai-rag.git
    cd mcp-crawl4ai-rag
    ```
 
-2. Install dependencies:
+2. **Install dependencies**:
+
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
-3. Create a `.env` file based on the configuration section below
+3. **Install Chromium browser** (only browser needed):
 
-4. Configure NEON cloud database connection (see Database Setup section)
+   ```bash
+   playwright install chromium
+   playwright install-deps chromium
+   ```
+
+4. **Create `.env` file** based on `.env.example`
+
+5. **Configure PostgreSQL database** (see Database Setup section)
 
 ### System Components Setup
 
 #### 1. MCP Server (RAG Service)
+
 ```bash
 # Run the MCP server for RAG queries
 python src/crawl4ai_mcp.py
 ```
 
 #### 2. Independent Crawling System
+
 ```bash
 # Run the intelligent crawling system
 python tools/continuous_crawler.py
 ```
 
 #### 3. Web Management Interface
+
 ```bash
 # Run the web dashboard (optional)
 cd frontend && python api.py
 ```
 
 The system components can run independently:
+
 - **MCP Server**: Provides RAG query capabilities via Model Context Protocol
 - **Crawling System**: Continuously crawls and processes content
 - **Web Interface**: Provides monitoring and management capabilities
 
-## NEON Cloud Database Setup
+## PostgreSQL Database Setup
 
-This project uses NEON cloud database for scalable, serverless PostgreSQL with pgvector:
+This project uses PostgreSQL database with pgvector extension for vector storage:
 
-1. **Create NEON Account**: Sign up at [neon.tech](https://neon.tech/) (free tier available)
+### Option 1: Cloud PostgreSQL (Recommended)
+
+1. **Choose a Provider**: Use any cloud PostgreSQL service (Neon, Supabase, AWS RDS, etc.)
 
 2. **Create Database**: Create a new PostgreSQL database with pgvector extension enabled
 
-3. **Get Connection Details**: Copy your NEON connection string from the dashboard
+3. **Get Connection Details**: Copy your database connection string from the provider dashboard
 
-4. **Configure Environment**: Add NEON credentials to your `.env` file (see Configuration section)
+4. **Configure Environment**: Add database credentials to your `.env` file (see Configuration section)
 
 5. **Automatic Setup**: The application will automatically create tables and indexes on first run
 
-**Benefits of NEON Cloud Database:**
-- ✅ No local PostgreSQL installation required
-- ✅ Automatic pgvector extension support
-- ✅ Serverless scaling and high availability
-- ✅ Built-in SSL security and connection pooling
-- ✅ Free tier with generous limits for development
+### Option 2: Self-Hosted PostgreSQL
 
+1. **Install PostgreSQL**: Install PostgreSQL 12+ on your server
+2. **Install pgvector**: Add the pgvector extension to your PostgreSQL instance
+3. **Create Database**: Create a new database for the project
+4. **Configure Access**: Set up SSL and connection pooling as needed
 
+**Benefits of Remote PostgreSQL:**
+
+- ✅ No local installation required (cloud option)
+- ✅ pgvector extension support for vector operations
+- ✅ Scalable and production-ready
+- ✅ SSL security and connection pooling
+- ✅ Multiple provider options available
 
 ## ⚙️ **Configuration**
 
 Create a `.env` file in the project root with the following variables:
 
 ### Core Configuration
+
 ```env
 # MCP Server Configuration
 HOST=127.0.0.1
@@ -290,31 +342,36 @@ RERANKER_MODEL=Qwen/Qwen3-Reranker-4B
 # Search Configuration
 USE_HYBRID_SEARCH=true  # Combines vector and keyword search
 
-# NEON Cloud Database Configuration
-NEON_HOST=your-neon-host.neon.tech
-NEON_PORT=5432
-NEON_DATABASE=neondb
-NEON_USER=your_neon_user
-NEON_PASSWORD=your_neon_password
+# PostgreSQL Database Configuration
+DB_HOST=your_database_host
+DB_PORT=5432
+DB_DATABASE=your_database_name
+DB_USER=your_database_user
+DB_PASSWORD=your_database_password
+DB_SSLMODE=require
 ```
 
 ### Embedding Modes
 
 #### Local Mode (Recommended)
+
 ```env
 EMBEDDING_MODE=local
 EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
 ```
+
 - Uses local Qwen3-Embedding-4B with Apple Silicon MPS acceleration
 - No API costs, complete privacy
 - Optimized for Apple Developer Documentation
 
 #### API Mode
+
 ```env
 EMBEDDING_MODE=api
 SILICONFLOW_API_KEY=your_siliconflow_api_key
 EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
 ```
+
 - Uses SiliconFlow API for embedding generation
 - Requires API key and internet connection
 - Consistent with local model output
@@ -324,12 +381,14 @@ EMBEDDING_MODEL=Qwen/Qwen3-Embedding-4B
 The MCP server includes a comprehensive logging system for monitoring and debugging:
 
 #### Log Levels
+
 ```env
 # Set in mcp.run() call or environment
 LOG_LEVEL=debug  # debug, info, warning, error
 ```
 
 #### Logging Features
+
 - **Service Lifecycle**: Server startup, database connections, module initialization
 - **RAG Query Flow**: Complete query processing pipeline tracking
 - **Performance Metrics**: Search results, processing times, result counts
@@ -337,6 +396,7 @@ LOG_LEVEL=debug  # debug, info, warning, error
 - **Debug Information**: Technical details for development and troubleshooting
 
 #### Log Output Examples
+
 ```
 🚀 Starting MCP RAG Server
 📡 Transport: HTTP (FastMCP 2.9.0)
@@ -350,6 +410,7 @@ LOG_LEVEL=debug  # debug, info, warning, error
 ```
 
 #### Production Recommendations
+
 - **Production**: Use `info` level for essential events only
 - **Development**: Use `debug` level for detailed flow tracking
 - **Monitoring**: Monitor `error` level logs for system health
@@ -363,6 +424,7 @@ The server now supports **native LM Studio integration** for embeddings, providi
 - **Separate Configuration**: Independent API keys, base URLs, and models for each service
 
 **Example Local Configuration:**
+
 ```env
 # Local LM Studio for embeddings
 EMBEDDING_API_KEY=lm-studio
@@ -384,18 +446,21 @@ LLM_MODEL=gpt-4.1-mini
 The server features **intelligent reranking** with automatic fallback:
 
 **🥇 Primary: Qwen3-Reranker-4B (Transformers)**
+
 - **Model**: Official `Qwen/Qwen3-Reranker-4B` via transformers library
 - **Method**: Direct logits extraction following HuggingFace specification
 - **Accuracy**: Maximum precision with true probability scores
 - **Requirements**: Optimized 4B model, PyTorch + transformers
 
 **🥈 Fallback: Embedding Similarity**
+
 - **Method**: Cosine similarity using local embedding model
 - **Speed**: Instant availability, no large downloads
 - **Quality**: Good relevance ranking for most use cases
 - **Compatibility**: Works with existing LM Studio setup
 
 **Key Advantages:**
+
 - ✅ **Zero Configuration**: Automatically selects best available method
 - ✅ **Graceful Degradation**: Always functional, even without large models
 - ✅ **Optimal Performance**: Uses true reranker when available
@@ -406,6 +471,7 @@ The server features **intelligent reranking** with automatic fallback:
 The Crawl4AI RAG MCP server supports four powerful RAG strategies that can be enabled independently:
 
 #### 1. **USE_CONTEXTUAL_EMBEDDINGS**
+
 When enabled, this strategy enhances each chunk's embedding with additional context from the entire document. The system passes both the full document and the specific chunk to an LLM (configured via `LLM_MODEL`) to generate enriched context that gets embedded alongside the chunk content.
 
 - **When to use**: Enable this when you need high-precision retrieval where context matters, such as technical documentation where terms might have different meanings in different sections.
@@ -413,15 +479,15 @@ When enabled, this strategy enhances each chunk's embedding with additional cont
 - **Cost**: Additional LLM API calls during indexing.
 
 #### 2. **USE_HYBRID_SEARCH**
+
 Combines traditional keyword search with semantic vector search to provide more comprehensive results. The system performs both searches in parallel and intelligently merges results, prioritizing documents that appear in both result sets.
 
 - **When to use**: Enable this when users might search using specific technical terms, function names, or when exact keyword matches are important alongside semantic understanding.
 - **Trade-offs**: Slightly slower search queries but more robust results, especially for technical content.
 - **Cost**: No additional API costs, just computational overhead.
 
-
-
 #### 3. **USE_RERANKING**
+
 Applies cross-encoder reranking to search results after initial retrieval. Uses a lightweight cross-encoder model (`cross-encoder/ms-marco-MiniLM-L-6-v2`) to score each result against the original query, then reorders results by relevance.
 
 - **When to use**: Enable this when search precision is critical and you need the most relevant results at the top. Particularly useful for complex queries where semantic similarity alone might not capture query intent.
@@ -429,11 +495,10 @@ Applies cross-encoder reranking to search results after initial retrieval. Uses 
 - **Cost**: No additional API costs - uses a local model that runs on CPU.
 - **Benefits**: Better result relevance, especially for complex queries.
 
-
-
 ### Recommended Configurations
 
 **For general documentation RAG:**
+
 ```
 USE_CONTEXTUAL_EMBEDDINGS=false
 USE_HYBRID_SEARCH=true
@@ -441,6 +506,7 @@ USE_RERANKING=true
 ```
 
 **For enhanced search quality:**
+
 ```
 USE_CONTEXTUAL_EMBEDDINGS=true
 USE_HYBRID_SEARCH=true
@@ -448,6 +514,7 @@ USE_RERANKING=true
 ```
 
 **For fast, basic RAG:**
+
 ```
 USE_CONTEXTUAL_EMBEDDINGS=false
 USE_HYBRID_SEARCH=true
@@ -466,6 +533,7 @@ python src/crawl4ai_mcp.py
 The MCP server will start on `http://127.0.0.1:4200/mcp` using FastMCP 2.9.0 with Streamable HTTP transport.
 
 **Server Features:**
+
 - **Lazy Database Initialization**: Connections created on-demand for optimal performance
 - **Apple Silicon Optimization**: MPS acceleration for local embedding generation
 - **Comprehensive Logging**: Detailed logs for debugging and monitoring
@@ -473,6 +541,7 @@ The MCP server will start on `http://127.0.0.1:4200/mcp` using FastMCP 2.9.0 wit
 
 **Logging Output:**
 The server provides detailed logging for monitoring and debugging:
+
 ```
 🚀 Starting MCP RAG Server
 📡 Transport: HTTP (FastMCP 2.9.0)
@@ -483,6 +552,7 @@ The server provides detailed logging for monitoring and debugging:
 ```
 
 **Query Processing Logs:**
+
 ```
 🔍 RAG query received: 'SwiftUI navigation best practices' (match_count: 3)
 🔧 Search mode: hybrid
@@ -506,6 +576,7 @@ python tools/continuous_crawler.py
 ```
 
 **Crawling Features:**
+
 - **Batch Processing**: Intelligent batch crawling with connection pooling
 - **Apple Documentation**: Specialized for Apple Developer Documentation
 - **Smart Discovery**: Automatic link discovery and URL expansion
@@ -537,6 +608,7 @@ Each component can run independently and scale according to your needs.
 The MCP server uses **FastMCP 2.9.0 with Streamable HTTP transport** for optimal performance and reliability.
 
 #### Standard MCP Client Configuration:
+
 ```json
 {
   "mcpServers": {
@@ -549,6 +621,7 @@ The MCP server uses **FastMCP 2.9.0 with Streamable HTTP transport** for optimal
 ```
 
 #### Windsurf Configuration:
+
 ```json
 {
   "mcpServers": {
@@ -561,6 +634,7 @@ The MCP server uses **FastMCP 2.9.0 with Streamable HTTP transport** for optimal
 ```
 
 #### Claude Code CLI:
+
 ```bash
 claude mcp add-json apple-docs-rag '{"type":"http","url":"http://127.0.0.1:4200/mcp"}' --scope user
 ```
@@ -611,20 +685,36 @@ For environments that require stdio transport, you can still use the traditional
   "mcpServers": {
     "crawl4ai-rag": {
       "command": "docker",
-      "args": ["run", "--rm", "-i",
-               "-e", "TRANSPORT",
-               "-e", "EMBEDDING_API_KEY",
-               "-e", "EMBEDDING_BASE_URL",
-               "-e", "EMBEDDING_MODEL",
-               "-e", "LLM_API_KEY",
-               "-e", "LLM_BASE_URL",
-               "-e", "LLM_MODEL",
-               "-e", "NEON_HOST",
-               "-e", "NEON_PORT",
-               "-e", "NEON_DATABASE",
-               "-e", "NEON_USER",
-               "-e", "NEON_PASSWORD",
-               "mcp/crawl4ai"],
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "-e",
+        "TRANSPORT",
+        "-e",
+        "EMBEDDING_API_KEY",
+        "-e",
+        "EMBEDDING_BASE_URL",
+        "-e",
+        "EMBEDDING_MODEL",
+        "-e",
+        "LLM_API_KEY",
+        "-e",
+        "LLM_BASE_URL",
+        "-e",
+        "LLM_MODEL",
+        "-e",
+        "NEON_HOST",
+        "-e",
+        "NEON_PORT",
+        "-e",
+        "NEON_DATABASE",
+        "-e",
+        "NEON_USER",
+        "-e",
+        "NEON_PASSWORD",
+        "mcp/crawl4ai"
+      ],
       "env": {
         "TRANSPORT": "stdio",
         "EMBEDDING_API_KEY": "your_embedding_api_key",
@@ -643,8 +733,6 @@ For environments that require stdio transport, you can still use the traditional
   }
 }
 ```
-
-
 
 ## Building Your Own Server
 
