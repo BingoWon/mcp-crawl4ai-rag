@@ -149,7 +149,7 @@ class DatabaseOperations:
         return result['count'] if result else 0
 
     async def get_urls_batch(self, batch_size: int = 5) -> List[str]:
-        """原子性获取批量待爬取URL - 分布式安全"""
+        """原子性获取批量待爬取URL - 分布式安全 + 强租约机制"""
         # 使用PostgreSQL advisory lock确保原子性
         lock_id = 12345  # 固定锁ID用于URL获取
 
@@ -158,11 +158,18 @@ class DatabaseOperations:
             await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
 
             try:
-                # 在锁保护下获取URL
+                # 在锁保护下获取URL并建立强租约（临时增加crawl_count）
                 results = await conn.fetch("""
-                    SELECT url FROM pages
-                    ORDER BY crawl_count ASC, last_crawled_at ASC
-                    LIMIT $1
+                    UPDATE pages
+                    SET crawl_count = crawl_count + 1,
+                        last_crawled_at = NOW()
+                    WHERE url IN (
+                        SELECT url FROM pages
+                        ORDER BY crawl_count ASC, last_crawled_at ASC
+                        LIMIT $1
+                        FOR UPDATE SKIP LOCKED
+                    )
+                    RETURNING url
                 """, batch_size)
 
                 return [row['url'] for row in results]
@@ -172,7 +179,7 @@ class DatabaseOperations:
                 await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
     async def get_process_urls_batch(self, batch_size: int = 5) -> List[tuple[str, str]]:
-        """批量原子性获取待处理的URL和内容 - 分布式安全"""
+        """批量原子性获取待处理的URL和内容 - 分布式安全 + 租约机制"""
         lock_id = 12346  # 处理器锁ID
 
         async with self.client.pool.acquire() as conn:
@@ -180,12 +187,19 @@ class DatabaseOperations:
             await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
 
             try:
-                # 在锁保护下批量获取URL和内容
+                # 在锁保护下批量获取URL和内容，同时建立租约
                 results = await conn.fetch("""
-                    SELECT url, content FROM pages
-                    WHERE content IS NOT NULL AND content != ''
-                    ORDER BY process_count ASC, last_crawled_at DESC
-                    LIMIT $1
+                    UPDATE pages
+                    SET process_count = process_count + 1,
+                        last_processed_at = NOW()
+                    WHERE url IN (
+                        SELECT url FROM pages
+                        WHERE content IS NOT NULL AND content != ''
+                        ORDER BY process_count ASC, last_crawled_at DESC
+                        LIMIT $1
+                        FOR UPDATE SKIP LOCKED
+                    )
+                    RETURNING url, content
                 """, batch_size)
 
                 return [(row['url'], row['content']) for row in results]
@@ -194,16 +208,7 @@ class DatabaseOperations:
                 # 释放advisory lock
                 await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
-    async def update_process_count_batch(self, urls: List[str]) -> None:
-        """批量更新处理计数"""
-        if not urls:
-            return
 
-        await self.client.execute_many("""
-            UPDATE pages
-            SET process_count = process_count + 1
-            WHERE url = $1
-        """, [(url,) for url in urls])
 
     async def delete_chunks_batch(self, urls: List[str]) -> None:
         """批量删除URL对应的chunks - 全局最优解"""
@@ -223,24 +228,15 @@ class DatabaseOperations:
         valid_content_pairs = [(url, content) for url, content in url_content_pairs if content.strip()]
         empty_content_urls = [url for url, content in url_content_pairs if not content.strip()]
 
-        # 更新有效内容（完整更新）
+        # 更新有效内容（不再增加crawl_count，租约已在get_urls_batch中建立）
         if valid_content_pairs:
             await self.client.execute_many("""
                 UPDATE pages
-                SET content = $2,
-                    crawl_count = crawl_count + 1,
-                    last_crawled_at = NOW()
+                SET content = $2
                 WHERE url = $1
             """, valid_content_pairs)
 
-        # 更新空内容（仅统计字段）
-        if empty_content_urls:
-            await self.client.execute_many("""
-                UPDATE pages
-                SET crawl_count = crawl_count + 1,
-                    last_crawled_at = NOW()
-                WHERE url = $1
-            """, [(url,) for url in empty_content_urls])
+        # 空内容不需要额外更新（租约已在get_urls_batch中建立）
 
         return len(valid_content_pairs), len(empty_content_urls)
 
