@@ -97,23 +97,20 @@ class ContentProcessor:
 
                 logger.info(f"=== Processing batch of {len(batch_results)} URLs ===")
 
-                # 批量处理所有URL
-                processed_urls = []
+                # 批量处理所有URL（租约已在获取时建立）
+                processed_count = 0
                 for url, content in batch_results:
                     process_count += 1
                     logger.info(f"Process #{process_count}: {url}")
 
                     try:
                         await self._process_content(url, content)
-                        processed_urls.append(url)
+                        processed_count += 1
                     except Exception as e:
                         logger.error(f"Failed to process {url}: {e}")
                         continue
 
-                # 批量更新process_count
-                if processed_urls:
-                    await self.db_operations.update_process_count_batch(processed_urls)
-                    logger.info(f"✅ Batch completed: {len(processed_urls)} URLs processed")
+                logger.info(f"✅ Batch completed: {processed_count}/{len(batch_results)} URLs processed")
 
             except KeyboardInterrupt:
                 logger.info("Processor interrupted by user")
