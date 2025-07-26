@@ -11,6 +11,11 @@ crawling, chunking, embedding, and storage.
 import sys
 import asyncio
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add src directory to path
 src_path = Path(__file__).parent.parent / "src"
@@ -34,7 +39,7 @@ async def main():
 
     try:
         # Start both crawler and processor concurrently
-        async with BatchCrawler(batch_size=25, max_concurrent=25) as crawler, ContentProcessor() as processor:
+        async with BatchCrawler(batch_size=30, max_concurrent=30) as crawler, ContentProcessor() as processor:
             await asyncio.gather(
                 crawler.start_crawling(TARGET_URL),
                 processor.start_processing()

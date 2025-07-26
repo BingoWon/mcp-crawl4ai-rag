@@ -1,9 +1,9 @@
 """
-NEON Cloud Database Configuration
-NEON云数据库配置
+Database Configuration
+数据库配置
 
-Cloud-native PostgreSQL configuration for NEON database.
-面向NEON数据库的云原生PostgreSQL配置。
+PostgreSQL database configuration for Apple RAG system.
+Apple RAG 系统的 PostgreSQL 数据库配置。
 """
 
 import os
@@ -11,48 +11,47 @@ from dataclasses import dataclass
 
 
 @dataclass
-class NEONConfig:
-    """NEON cloud database configuration"""
+class DatabaseConfig:
+    """PostgreSQL database configuration"""
 
-    # NEON cloud connection parameters
-    host: str = os.getenv('NEON_HOST', 'ep-restless-breeze-aeg59cuv-pooler.c-2.us-east-2.aws.neon.tech')
-    port: int = int(os.getenv('NEON_PORT', '5432'))
-    database: str = os.getenv('NEON_DATABASE', 'neondb')
-    user: str = os.getenv('NEON_USER', 'neondb_owner')
-    password: str = os.getenv('NEON_PASSWORD', '')
-    sslmode: str = 'require'  # NEON requires SSL
+    # Database connection parameters
+    host: str = os.getenv('DB_HOST', 'localhost')
+    port: int = int(os.getenv('DB_PORT', '5432'))
+    database: str = os.getenv('DB_DATABASE', 'apple_rag_db')
+    user: str = os.getenv('DB_USER', 'apple_rag_user')
+    password: str = os.getenv('DB_PASSWORD', '')
+    sslmode: str = os.getenv('DB_SSLMODE', 'disable')
 
-    # Cloud-optimized pool configuration
+    # Connection pool configuration
     min_pool_size: int = 2
     max_pool_size: int = 10
     command_timeout: int = 60
 
     def __post_init__(self):
-        """Validate NEON configuration after initialization"""
+        """Validate database configuration after initialization"""
         if not self.password:
-            raise ValueError("NEON password is required")
+            raise ValueError("Database password is required")
         if not self.database:
-            raise ValueError("NEON database name is required")
+            raise ValueError("Database name is required")
 
     @classmethod
-    def from_env(cls) -> "NEONConfig":
-        """Create NEON configuration from environment variables"""
+    def from_env(cls) -> "DatabaseConfig":
+        """Create database configuration from environment variables"""
         return cls()
 
     @property
     def connection_string(self) -> str:
-        """Get NEON connection string with SSL"""
-        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}?sslmode={self.sslmode}"
+        """Get database connection string"""
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
 
     def to_dict(self) -> dict:
-        """Convert to dictionary for asyncpg.create_pool with SSL"""
+        """Convert to dictionary for asyncpg.create_pool"""
         return {
             'host': self.host,
             'port': self.port,
             'database': self.database,
             'user': self.user,
             'password': self.password,
-            'ssl': self.sslmode,
             'min_size': self.min_pool_size,
             'max_size': self.max_pool_size,
             'command_timeout': self.command_timeout

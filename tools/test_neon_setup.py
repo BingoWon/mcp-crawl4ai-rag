@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-NEON Cloud Database Setup Test
-测试NEON云数据库设置
+Database Setup Test
+测试数据库设置
 
-Validates NEON database connection and setup for the crawl4ai-rag project.
-验证crawl4ai-rag项目的NEON数据库连接和设置。
+Validates database connection and setup for the crawl4ai-rag project.
+验证crawl4ai-rag项目的数据库连接和设置。
 """
 
 import asyncio
@@ -17,22 +17,22 @@ from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-async def test_neon_setup():
-    """Test NEON database setup and functionality"""
-    logger.info("🚀 Testing NEON cloud database setup")
+async def test_database_setup():
+    """Test database setup and functionality"""
+    logger.info("🚀 Testing database setup")
     
     try:
         # Test database connection
-        logger.info("🔗 Testing NEON database connection...")
+        logger.info("🔗 Testing database connection...")
         client = await get_database_client()
-        
+
         # Test basic query
         version = await client.fetch_one("SELECT version()")
         logger.info(f"✅ Connected to: {version['version']}")
-        
+
         # Test database operations
         logger.info("📊 Testing database operations...")
-        db_ops = DatabaseOperations(client)
+        DatabaseOperations(client)
         
         # Test table existence
         tables = await client.fetch_all("""
@@ -70,22 +70,22 @@ async def test_neon_setup():
             vector_count = await client.fetch_one("SELECT COUNT(*) as count FROM chunks WHERE embedding IS NOT NULL")
             logger.info(f"🔢 Vector embeddings: {vector_count['count']:,}")
         
-        logger.info("🎉 NEON database setup test completed successfully!")
+        logger.info("🎉 Database setup test completed successfully!")
         return True
-        
+
     except Exception as e:
-        logger.error(f"❌ NEON database setup test failed: {e}")
+        logger.error(f"❌ Database setup test failed: {e}")
         return False
 
 async def main():
     """Main test function"""
-    success = await test_neon_setup()
-    
+    success = await test_database_setup()
+
     if success:
-        logger.info("✅ NEON cloud database is ready for use!")
+        logger.info("✅ Database is ready for use!")
     else:
-        logger.error("❌ NEON database setup issues detected")
-        logger.info("💡 Please check your NEON configuration in .env file")
+        logger.error("❌ Database setup issues detected")
+        logger.info("💡 Please check your database configuration")
         sys.exit(1)
 
 if __name__ == "__main__":
