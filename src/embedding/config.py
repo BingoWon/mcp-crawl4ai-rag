@@ -32,7 +32,7 @@ class EmbeddingConfig:
     normalize_embeddings: bool = True
 
     # API configuration (for SiliconFlow)
-    api_base_url: str = "https://api.siliconflow.cn/v1/embeddings"
+    api_base_url: str = os.getenv("SILICONFLOW_API_BASE_URL", "https://api.siliconflow.cn/v1/embeddings")
     api_timeout: int = int(os.getenv("SILICONFLOW_TIMEOUT", "30"))
     
     def __post_init__(self):

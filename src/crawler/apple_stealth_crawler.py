@@ -176,7 +176,7 @@ class CrawlerPool:
         return CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS, # 必须使用 BYPASS！！！
             delay_before_return_html=5,
-            page_timeout=10000,
+            page_timeout=5000,
             css_selector=css_selector,
             exclude_external_links=True,
             only_text=False,

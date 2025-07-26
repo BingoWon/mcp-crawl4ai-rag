@@ -45,9 +45,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from database import get_database_client, DatabaseOperations
 from chunking import SmartChunker
-from embedding import create_embedding
+from embedding import create_embedding, get_embedder
+from embedding.providers import SiliconFlowProvider
 from utils.logger import setup_logger
 import asyncio
+import os
 
 logger = setup_logger(__name__)
 
@@ -78,33 +80,46 @@ class ContentProcessor:
         logger.info("Cleaning up processor resources")
 
     async def start_processing(self) -> None:
-        """开始批量内容处理循环 - 全局最优解"""
-        logger.info("Starting batch processor")
+        """批量内容处理循环 - 全局最优解"""
+        batch_size = int(os.getenv("PROCESSOR_BATCH_SIZE", "5"))
+        logger.info(f"🚀 Starting batch processor (batch_size={batch_size})")
 
         process_count = 0
         while True:
             try:
-                # Get next URL to process (minimum process_count)
-                result = await self.db_operations.get_process_url()
-                # if not result:
-                #     logger.info("No URLs to process")
-                #     await asyncio.sleep(3)  # Wait before checking again
-                #     continue
+                # 批量获取待处理的URL和内容
+                batch_results = await self.db_operations.get_process_urls_batch(batch_size)
 
-                next_url, content = result
-                process_count += 1
-                logger.info(f"=== Process #{process_count}: {next_url} ===")
+                if not batch_results:
+                    logger.info("No URLs to process")
+                    await asyncio.sleep(3)
+                    continue
 
-                # Process the page content
-                await self._process_content(next_url, content)
+                logger.info(f"=== Processing batch of {len(batch_results)} URLs ===")
 
-                # await asyncio.sleep(0.25)  # TODO: Wait before checking again
+                # 批量处理所有URL
+                processed_urls = []
+                for url, content in batch_results:
+                    process_count += 1
+                    logger.info(f"Process #{process_count}: {url}")
+
+                    try:
+                        await self._process_content(url, content)
+                        processed_urls.append(url)
+                    except Exception as e:
+                        logger.error(f"Failed to process {url}: {e}")
+                        continue
+
+                # 批量更新process_count
+                if processed_urls:
+                    await self.db_operations.update_process_count_batch(processed_urls)
+                    logger.info(f"✅ Batch completed: {len(processed_urls)} URLs processed")
 
             except KeyboardInterrupt:
                 logger.info("Processor interrupted by user")
                 break
             except Exception as e:
-                logger.error(f"Process error: {e}")
+                logger.error(f"Batch process error: {e}")
                 continue
 
     async def _process_content(self, url: str, content: str) -> None:
@@ -126,14 +141,39 @@ class ContentProcessor:
             await self.db_operations.update_process_count(url)
             return
 
-        # Process chunks with embedding
+        # Process chunks with embedding - 智能策略选择
         data_to_insert = []
-        for i, chunk in enumerate(chunks):
-            if len(chunk) < 128:
-                logger.error(f"⚠️ Chunk {i+1} 长度过短: {len(chunk)} 字符 - URL: {url}")
+        valid_chunks = [chunk for chunk in chunks if chunk.strip()]
 
-            logger.info(f"Processing chunk {i+1}/{len(chunks)}, length: {len(chunk)}")
-            if chunk.strip():
+        if not valid_chunks:
+            logger.error(f"❌ No valid chunks for {url}")
+            await self.db_operations.update_process_count(url)
+            return
+
+        # 检测embedding provider类型并选择处理策略
+        embedder = get_embedder()
+
+        if isinstance(embedder, SiliconFlowProvider):
+            # API模式：批量并发处理
+            logger.info(f"API mode: batch processing {len(valid_chunks)} chunks")
+            embeddings = await embedder.encode_batch_concurrent(valid_chunks)
+
+            for i, (chunk, embedding) in enumerate(zip(valid_chunks, embeddings)):
+                if len(chunk) < 128:
+                    logger.error(f"⚠️ Chunk {i+1} 长度过短: {len(chunk)} 字符")
+                data_to_insert.append({
+                    "url": url,
+                    "content": chunk,
+                    "embedding": str(embedding)
+                })
+        else:
+            # 本地模式：严格单个处理
+            logger.info(f"Local mode: sequential processing {len(valid_chunks)} chunks")
+            for i, chunk in enumerate(valid_chunks):
+                if len(chunk) < 128:
+                    logger.error(f"⚠️ Chunk {i+1} 长度过短: {len(chunk)} 字符")
+
+                logger.info(f"Processing chunk {i+1}/{len(valid_chunks)}, length: {len(chunk)}")
                 embedding = create_embedding(chunk)
                 data_to_insert.append({
                     "url": url,
@@ -143,14 +183,11 @@ class ContentProcessor:
 
         if not data_to_insert:
             logger.error(f"❌ No data to insert for {url}")
-            await self.db_operations.update_process_count(url)
             return
 
-        # Batch operations: insert chunks and update process count
+        # Insert chunks (process_count will be updated in batch)
         await self.db_operations.insert_chunks(data_to_insert)
-        await self.db_operations.update_process_count(url)
-
-        logger.info(f"✅ Processed {url}: {len(chunks)} chunks created")
+        logger.info(f"✅ Processed {url}: {len(data_to_insert)} chunks created")
 
 
 async def main():

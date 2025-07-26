@@ -56,7 +56,7 @@ High-level database operations for crawled content and RAG functionality with ba
 - 为双重爬取策略提供高效数据支持
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from .client import DatabaseClient
 
 
@@ -171,41 +171,31 @@ class DatabaseOperations:
                 # 释放advisory lock
                 await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
-    async def get_process_url(self) -> Optional[tuple[str, str]]:
-        """原子性获取待处理的URL和内容 - 分布式安全"""
-        lock_id = 12346  # 不同的锁ID用于处理器
+    async def get_process_urls_batch(self, batch_size: int = 5) -> List[tuple[str, str]]:
+        """批量原子性获取待处理的URL和内容 - 分布式安全"""
+        lock_id = 12346  # 处理器锁ID
 
         async with self.client.pool.acquire() as conn:
             # 获取advisory lock
             await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
 
             try:
-                # 在锁保护下获取URL和内容
-                result = await conn.fetchrow("""
+                # 在锁保护下批量获取URL和内容
+                results = await conn.fetch("""
                     SELECT url, content FROM pages
                     WHERE content IS NOT NULL AND content != ''
                     ORDER BY process_count ASC, last_crawled_at DESC
-                    LIMIT 1
-                """)
+                    LIMIT $1
+                """, batch_size)
 
-                if result:
-                    return (result['url'], result['content'])
-                return None
+                return [(row['url'], row['content']) for row in results]
 
             finally:
                 # 释放advisory lock
                 await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
-    async def update_process_count(self, url: str) -> None:
-        """更新处理计数"""
-        await self.client.execute_command("""
-            UPDATE pages
-            SET process_count = process_count + 1
-            WHERE url = $1
-        """, url)
-
     async def update_process_count_batch(self, urls: List[str]) -> None:
-        """批量更新处理计数 - 全局最优解"""
+        """批量更新处理计数"""
         if not urls:
             return
 
