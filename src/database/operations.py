@@ -165,7 +165,7 @@ class DatabaseOperations:
                         last_crawled_at = NOW()
                     WHERE url IN (
                         SELECT url FROM pages
-                        ORDER BY crawl_count ASC, last_crawled_at ASC
+                        ORDER BY crawl_count ASC, last_crawled_at ASC NULLS FIRST
                         LIMIT $1
                         FOR UPDATE SKIP LOCKED
                     )
