@@ -150,7 +150,7 @@ async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str 
             "data": formatted_pages,
             "count": len(formatted_pages),
             "stats": {
-                "avg_crawl_interval": f"{avg_crawl_interval:.2f}" if avg_crawl_interval else None,
+                "avg_crawl_interval": f"{avg_crawl_interval:.3f}" if avg_crawl_interval else None,
                 "data_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
             }
         })
