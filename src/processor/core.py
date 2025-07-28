@@ -200,29 +200,30 @@ class ContentProcessor:
 
     async def _batch_store_chunks(self, url_chunk_mapping: dict[str, List[str]],
                                  all_embeddings: List[List[float]]) -> int:
-        """批量存储所有chunks"""
+        """真正的批量存储：批量删除 + 批量插入"""
+        urls_to_process = list(url_chunk_mapping.keys())
+
+        # 批量删除所有URL的旧chunks（单次数据库操作）
+        await self.db_operations.delete_chunks_batch(urls_to_process)
+
+        # 收集所有URL的chunks到单个数组
+        all_data_to_insert = []
         chunk_index = 0
-        processed_count = 0
 
         for url, chunks in url_chunk_mapping.items():
-            await self.db_operations.delete_chunks_by_url(url)
-
-            if not chunks:
-                continue
-
-            data_to_insert = []
             for chunk in chunks:
-                data_to_insert.append({
+                all_data_to_insert.append({
                     "url": url,
                     "content": chunk,
                     "embedding": str(all_embeddings[chunk_index])
                 })
                 chunk_index += 1
 
-            await self.db_operations.insert_chunks(data_to_insert)
-            processed_count += 1
+        # 批量插入所有chunks（单次数据库操作）
+        if all_data_to_insert:
+            await self.db_operations.insert_chunks(all_data_to_insert)
 
-        return processed_count
+        return len(urls_to_process)
 
 
 async def main():
