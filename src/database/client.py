@@ -117,7 +117,7 @@ class DatabaseClient:
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     url TEXT NOT NULL,
                     content TEXT NOT NULL,
-                    embedding vector(2560),
+                    embedding halfvec(2560),
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 )
             """)
