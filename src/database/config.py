@@ -25,7 +25,7 @@ class DatabaseConfig:
     # Connection pool configuration
     min_pool_size: int = 2
     max_pool_size: int = 10
-    command_timeout: int = 60
+    command_timeout: int = 3600  # 增加到1小时，支持大型迁移操作
 
     def __post_init__(self):
         """Validate database configuration after initialization"""
