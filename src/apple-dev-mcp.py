@@ -55,7 +55,7 @@ import aiohttp
 
 from local_reranker import create_reranker
 
-from database import get_database_client as get_neon_client, DatabaseOperations
+from database import create_database_client, DatabaseOperations
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -78,7 +78,8 @@ class DatabaseManager:
             if self._operations is None:
                 logger.debug("🔗 Initializing database connection for MCP server")
                 try:
-                    client = await get_neon_client()
+                    client = create_database_client()
+                    await client.initialize()
                     self._operations = DatabaseOperations(client)
                     logger.info("✅ Database connection established successfully")
                 except Exception as e:

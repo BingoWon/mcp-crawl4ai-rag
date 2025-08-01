@@ -22,7 +22,7 @@ src_path = Path(__file__).parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
 from crawler.core import BatchCrawler
-from processor.core import ContentProcessor
+from processor.core import StreamlineProcessor
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -39,7 +39,7 @@ async def main():
 
     try:
         # Start both crawler and processor concurrently
-        async with BatchCrawler() as crawler, ContentProcessor() as processor:
+        async with BatchCrawler() as crawler, StreamlineProcessor() as processor:
             await asyncio.gather(
                 crawler.start_crawling(TARGET_URL),
                 processor.start_processing()

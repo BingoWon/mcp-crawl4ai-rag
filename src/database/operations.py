@@ -1,70 +1,29 @@
 """
-Database Operations - 批量优化版本
-数据库操作 - 支持高效批量处理
+Database Operations - High-level Database Interface
+数据库操作 - 高级数据库接口
 
-High-level database operations for crawled content and RAG functionality with batch optimization.
-爬取内容和RAG功能的高级数据库操作，支持批量优化处理。
+High-level database operations for the Apple RAG system with optimized
+batch processing and intelligent scheduling.
 
-=== 智能调度策略设计 ===
-
-本模块实现了基于时间优先级的智能调度策略，最大化爬取和处理的业务价值：
-
-**爬取调度策略：优先选择最久未爬取的页面**
-- 核心原理：距离上次爬取时间越久，网站内容变动可能性越大
-- 调度逻辑：ORDER BY crawl_count ASC, last_crawled_at ASC
-- 业务价值：最大化发现内容变更的概率，提高爬取资源利用效率
-
-**处理调度策略：优先选择最新爬取的页面**
-- 核心原理：刚爬取的内容最稳定，不太可能再次变动
-- 调度逻辑：ORDER BY process_count ASC, last_crawled_at DESC
-- 业务价值：避免处理后因内容变动而失去价值，确保处理投入的最大回报
-
-**策略协同效应：**
-- 爬取器：持续刷新最可能变化的页面，保持内容新鲜度
-- 处理器：优先处理最稳定的内容，避免重复处理成本
-- 系统整体：实现爬取和处理资源的最优配置
-
-=== 批量操作优化设计 ===
-
-本模块实现了高效的批量数据库操作，支持批量爬取器的性能需求：
-
-**批量URL获取：get_urls_batch() 方法**
-- 一次查询获取多个待爬取URL
-- 返回格式：List[str] = [url, ...]
-- 减少数据库查询次数，提高批量处理效率
-
-**批量内容更新：update_pages_batch() 方法**
-- 使用execute_many进行批量更新操作
-- 同时更新内容、爬取计数和时间戳
-- 显著减少数据库交互次数和事务开销
-
-**设计原理：**
-1. 传统方式：逐个查询和更新（N次数据库访问）
-2. 批量方式：批量查询和批量更新（2次数据库访问）
-3. 性能提升：减少80%+的数据库查询，大幅降低延迟
-
-**批量操作特性：**
-- 事务安全：批量操作在单个事务中完成
-- 错误隔离：单个URL失败不影响整个批次
-- 资源优化：减少数据库连接和网络开销
-- 扩展性好：支持可配置的批量大小
-
-**实际效果：**
-- 数据库负载减少80%+
-- 批量爬取效率显著提升
-- 支持高并发批量处理场景
-- 为双重爬取策略提供高效数据支持
+Features:
+- Intelligent crawling scheduling (prioritize least crawled pages)
+- Efficient processing scheduling (prioritize recently crawled pages)
+- Atomic batch operations with PostgreSQL locks
+- Optimized database interactions
 """
 
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Tuple
 from .client import DatabaseClient, create_database_client
-from .http_client import HTTPDatabaseClient
 
 
 class DatabaseOperations:
-    """High-level database operations with multi-mode support"""
+    """
+    High-level database operations
 
-    def __init__(self, client: Union[DatabaseClient, HTTPDatabaseClient, None] = None):
+    Provides high-level database operations for the Apple RAG system.
+    """
+
+    def __init__(self, client: DatabaseClient = None):
         self.client = client or create_database_client()
     
     # ============================================================================
@@ -144,38 +103,13 @@ class DatabaseOperations:
 
         return result['count'] if result else 0
 
-    async def get_urls_batch(self, batch_size: int = 5) -> List[str]:
-        """获取待爬取URL批次"""
+    async def get_pages_batch(self, batch_size: int = 5) -> List[str]:
+        """Get batch of URLs for crawling using unified interface with atomic operations"""
         return await self.client.get_pages_batch(batch_size)
 
-
-
-    async def get_process_urls_batch(self, batch_size: int = 5) -> List[tuple[str, str]]:
-        """批量获取待处理的URL和内容"""
-        # 获取有内容的URL
-        results = await self.client.fetch_all("""
-            SELECT url, content FROM pages
-            WHERE content IS NOT NULL AND content != ''
-            ORDER BY process_count ASC, last_crawled_at DESC
-            LIMIT $1
-        """, batch_size)
-
-        url_content_pairs = [(row['url'], row['content']) for row in results]
-
-        # 更新处理计数
-        if url_content_pairs:
-            await self.client.execute_many("""
-                UPDATE pages
-                SET process_count = process_count + 1,
-                    last_processed_at = NOW()
-                WHERE url = $1
-            """, [(url,) for url, _ in url_content_pairs])
-
-        return url_content_pairs
-
-
-
-
+    async def get_process_urls_batch(self, batch_size: int = 5) -> List[Tuple[str, str]]:
+        """Get batch of URLs and content for processing using unified interface"""
+        return await self.client.get_process_urls_batch(batch_size)
 
     async def delete_chunks_batch(self, urls: List[str]) -> None:
         """批量删除URL对应的chunks - 全局最优解"""
@@ -186,24 +120,18 @@ class DatabaseOperations:
             DELETE FROM chunks WHERE url = $1
         """, [(url,) for url in urls])
 
-    async def update_pages_batch(self, url_content_pairs: List[tuple[str, str]]) -> tuple[int, int]:
-        """批量选择性更新页面内容和爬取计数 - 全局最优解"""
+    async def update_pages_batch(self, url_content_pairs: List[Tuple[str, str]]) -> Tuple[int, int]:
+        """Update pages content in batch using unified interface"""
         if not url_content_pairs:
             return 0, 0
 
-        # 分离有效内容和空内容 - 优雅现代精简
+        # Separate valid content and empty content
         valid_content_pairs = [(url, content) for url, content in url_content_pairs if content.strip()]
         empty_content_urls = [url for url, content in url_content_pairs if not content.strip()]
 
-        # 更新有效内容（不再增加crawl_count，租约已在get_urls_batch中建立）
+        # Update valid content using unified interface
         if valid_content_pairs:
-            await self.client.execute_many("""
-                UPDATE pages
-                SET content = $2
-                WHERE url = $1
-            """, valid_content_pairs)
-
-        # 空内容不需要额外更新（租约已在get_urls_batch中建立）
+            await self.client.update_pages_batch(valid_content_pairs)
 
         return len(valid_content_pairs), len(empty_content_urls)
 
@@ -212,15 +140,4 @@ class DatabaseOperations:
         await self.client.execute_command(
             "DELETE FROM chunks WHERE url = $1", url
         )
-    
-    # ============================================================================
-    # CODE EXAMPLES OPERATIONS
-    # ============================================================================
-    
-
-    
-
-    
-
-    
 

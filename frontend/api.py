@@ -42,7 +42,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
-import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file (从父目录加载)
@@ -51,16 +50,18 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 # 添加src目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-# 强制设置为local模式 - frontend永远只使用本地数据库
-os.environ['DB_ACCESS_MODE'] = 'local'
+from database.client import create_database_client
 
-from database.utils import get_database_client, close_database_client
+# 全局数据库客户端
+_db_client = None
 
-# 确保使用正确的数据库模式 - 清除可能的缓存
-async def ensure_local_database():
-    """确保使用本地数据库连接"""
-    await close_database_client()  # 清除缓存
-    return await get_database_client()
+async def get_database_client():
+    """获取数据库客户端"""
+    global _db_client
+    if _db_client is None:
+        _db_client = create_database_client()
+        await _db_client.initialize()
+    return _db_client
 
 app = FastAPI(title="Database Viewer API", version="1.0.0")
 
@@ -78,7 +79,7 @@ app.add_middleware(
 async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str = "desc") -> JSONResponse:
     """获取pages表数据（固定前100条）"""
     try:
-        client = await ensure_local_database()
+        client = await get_database_client()
 
         # 构建查询条件
         where_clause = "WHERE last_crawled_at IS NOT NULL"
@@ -176,7 +177,7 @@ async def get_chunks(page: int = 1, size: int = 50, search: str = "",
                     page_id: str = "", sort: str = "created_at", order: str = "desc") -> JSONResponse:
     """获取chunks表数据（分页）"""
     try:
-        client = await ensure_local_database()
+        client = await get_database_client()
 
         # 构建查询条件
         where_conditions = []
@@ -271,7 +272,7 @@ async def get_chunks(page: int = 1, size: int = 50, search: str = "",
 async def get_stats() -> JSONResponse:
     """获取统计信息"""
     try:
-        client = await ensure_local_database()
+        client = await get_database_client()
 
         # 合并所有统计查询为单个复杂查询 - 全局最优解
         stats = await client.fetch_all("""
