@@ -56,15 +56,16 @@ High-level database operations for crawled content and RAG functionality with ba
 - 为双重爬取策略提供高效数据支持
 """
 
-from typing import List, Dict, Any
-from .client import DatabaseClient
+from typing import List, Dict, Any, Union
+from .client import DatabaseClient, create_database_client
+from .http_client import HTTPDatabaseClient
 
 
 class DatabaseOperations:
-    """High-level database operations"""
+    """High-level database operations with multi-mode support"""
 
-    def __init__(self, client: DatabaseClient):
-        self.client = client
+    def __init__(self, client: Union[DatabaseClient, HTTPDatabaseClient, None] = None):
+        self.client = client or create_database_client()
     
     # ============================================================================
     # CRAWLED PAGES OPERATIONS
@@ -121,12 +122,7 @@ class DatabaseOperations:
 
     async def insert_url_if_not_exists(self, url: str) -> bool:
         """Insert URL with crawl_count=0 and last_crawled_at=NULL if not exists. Returns True if inserted."""
-        result = await self.client.execute_command("""
-            INSERT INTO pages (url, crawl_count, content, last_crawled_at)
-            VALUES ($1, 0, '', NULL)
-            ON CONFLICT (url) DO NOTHING
-        """, url)
-        return "INSERT 0 1" in result
+        return await self.client.insert_page(url)
 
     async def insert_urls_batch(self, urls: List[str]) -> int:
         """批量插入URL，返回实际插入的数量 - 全局最优解"""
@@ -149,64 +145,35 @@ class DatabaseOperations:
         return result['count'] if result else 0
 
     async def get_urls_batch(self, batch_size: int = 5) -> List[str]:
-        """原子性获取批量待爬取URL - 分布式安全 + 强租约机制"""
-        # 使用PostgreSQL advisory lock确保原子性
-        lock_id = 12345  # 固定锁ID用于URL获取
+        """获取待爬取URL批次"""
+        return await self.client.get_pages_batch(batch_size)
 
-        async with self.client.pool.acquire() as conn:
-            # 获取advisory lock
-            await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
 
-            try:
-                # 在锁保护下获取URL并建立强租约（临时增加crawl_count）
-                results = await conn.fetch("""
-                    UPDATE pages
-                    SET crawl_count = crawl_count + 1,
-                        last_crawled_at = NOW()
-                    WHERE url IN (
-                        SELECT url FROM pages
-                        ORDER BY crawl_count ASC, last_crawled_at ASC NULLS FIRST
-                        LIMIT $1
-                        FOR UPDATE SKIP LOCKED
-                    )
-                    RETURNING url
-                """, batch_size)
-
-                return [row['url'] for row in results]
-
-            finally:
-                # 释放advisory lock
-                await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
     async def get_process_urls_batch(self, batch_size: int = 5) -> List[tuple[str, str]]:
-        """批量原子性获取待处理的URL和内容 - 分布式安全 + 租约机制"""
-        lock_id = 12346  # 处理器锁ID
+        """批量获取待处理的URL和内容"""
+        # 获取有内容的URL
+        results = await self.client.fetch_all("""
+            SELECT url, content FROM pages
+            WHERE content IS NOT NULL AND content != ''
+            ORDER BY process_count ASC, last_crawled_at DESC
+            LIMIT $1
+        """, batch_size)
 
-        async with self.client.pool.acquire() as conn:
-            # 获取advisory lock
-            await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
+        url_content_pairs = [(row['url'], row['content']) for row in results]
 
-            try:
-                # 在锁保护下批量获取URL和内容，同时建立租约
-                results = await conn.fetch("""
-                    UPDATE pages
-                    SET process_count = process_count + 1,
-                        last_processed_at = NOW()
-                    WHERE url IN (
-                        SELECT url FROM pages
-                        WHERE content IS NOT NULL AND content != ''
-                        ORDER BY process_count ASC, last_crawled_at DESC
-                        LIMIT $1
-                        FOR UPDATE SKIP LOCKED
-                    )
-                    RETURNING url, content
-                """, batch_size)
+        # 更新处理计数
+        if url_content_pairs:
+            await self.client.execute_many("""
+                UPDATE pages
+                SET process_count = process_count + 1,
+                    last_processed_at = NOW()
+                WHERE url = $1
+            """, [(url,) for url, _ in url_content_pairs])
 
-                return [(row['url'], row['content']) for row in results]
+        return url_content_pairs
 
-            finally:
-                # 释放advisory lock
-                await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
+
 
 
 

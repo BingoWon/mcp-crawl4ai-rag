@@ -2,13 +2,13 @@
 Database Utilities
 数据库工具
 
-Global database client management and utility functions.
-全局数据库客户端管理和工具函数。
+Global multi-mode database client management and utility functions.
+全局多模式数据库客户端管理和工具函数。
 """
 
-from typing import Optional
-from .client import DatabaseClient
-from .config import DatabaseConfig
+from typing import Optional, Union
+from .client import DatabaseClient, create_database_client
+from .http_client import HTTPDatabaseClient
 from .operations import DatabaseOperations
 
 
@@ -16,16 +16,15 @@ from .operations import DatabaseOperations
 # GLOBAL DATABASE CLIENT MANAGEMENT
 # ============================================================================
 
-_database_client: Optional[DatabaseClient] = None
+_database_client: Optional[Union[DatabaseClient, HTTPDatabaseClient]] = None
 _database_operations: Optional[DatabaseOperations] = None
 
 
-async def get_database_client() -> DatabaseClient:
-    """Get or create the global database client instance"""
+async def get_database_client() -> Union[DatabaseClient, HTTPDatabaseClient]:
+    """Get or create the global database client instance (multi-mode)"""
     global _database_client
     if _database_client is None:
-        config = DatabaseConfig.from_env()
-        _database_client = DatabaseClient(config)
+        _database_client = create_database_client()
         await _database_client.initialize()
     return _database_client
 
@@ -54,12 +53,7 @@ async def close_database_client() -> None:
 
 
 
-async def _search_documents_async(client, query, match_count=10):
-    """Backward compatibility function for document search"""
-    ops = await get_database_operations()
 
-    # Use keyword search
-    return await ops.search_documents_keyword(query, match_count)
 
 
 

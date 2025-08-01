@@ -23,7 +23,7 @@ from chunking import SmartChunker
 async def test_apple_metal_chunking():
     """测试 Apple Metal 文档的 chunking"""
     # url = "https://developer.apple.com/documentation/SampleCode"
-    url = "https://developer.apple.com/documentation/metal/mtlcounterset/counters"
+    url = "https://developer.apple.com/documentation/Xcode/build-settings-reference"
     
     print(f"🚀 开始测试 Apple Metal 文档 chunking")
     print(f"URL: {url}")
@@ -32,7 +32,7 @@ async def test_apple_metal_chunking():
     try:
         # 初始化组件
         print("📦 初始化组件...")
-        crawler = BatchCrawler(batch_size=1, max_concurrent=1)
+        crawler = BatchCrawler()
         chunker = SmartChunker()
         
         # 爬取页面

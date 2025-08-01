@@ -69,8 +69,8 @@ class BatchCrawler:
 
     def __init__(self):
         """Initialize batch crawler with environment-based configuration"""
-        self.batch_size = int(os.getenv("CRAWLER_BATCH_SIZE", "30"))
-        self.max_concurrent = int(os.getenv("CRAWLER_MAX_CONCURRENT", "30"))
+        self.batch_size = int(os.getenv("CRAWLER_BATCH_SIZE", "2"))
+        self.max_concurrent = int(os.getenv("CRAWLER_MAX_CONCURRENT", "2"))
         self.db_client = None
         self.db_operations = None
         self.crawler_pool = None
@@ -108,12 +108,18 @@ class BatchCrawler:
             logger.info("Persistent crawler pool closed")
 
     def clean_and_normalize_urls_batch(self, urls: List[str]) -> List[str]:
-        """批量清洗和标准化URL - 全局最优解"""
+        """批量清洗和标准化URL - 修复重复URL问题"""
         cleaned_urls = []
         for url in urls:
             parsed = urlparse(url)
-            # 清洗：移除fragment，标准化：移除末尾斜杠
-            cleaned_parsed = parsed._replace(fragment='', path=parsed.path.rstrip('/'))
+            # 关键修复：移除query参数、fragment，标准化路径和域名
+            cleaned_parsed = parsed._replace(
+                scheme=parsed.scheme.lower(),
+                netloc=parsed.netloc.lower(),
+                path=parsed.path.rstrip('/').lower(),  # 路径也要小写
+                query='',  # 移除所有query参数
+                fragment=''  # 移除fragment
+            )
             cleaned_urls.append(urlunparse(cleaned_parsed))
         return cleaned_urls
 
