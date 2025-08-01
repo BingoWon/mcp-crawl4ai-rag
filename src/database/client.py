@@ -30,7 +30,8 @@ import asyncpg
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from .config import DatabaseConfig
+from .config import DatabaseConfig, DatabaseAccessMode
+from .http_client import HTTPDatabaseClient
 
 
 def serialize_db_value(value):
@@ -50,6 +51,19 @@ def serialize_db_row(row) -> Dict[str, Any]:
     return {key: serialize_db_value(value) for key, value in row.items()}
 
 
+def create_database_client(config: Optional[DatabaseConfig] = None):
+    """Factory function to create appropriate database client based on access mode"""
+    config = config or DatabaseConfig.from_env()
+
+    # 根据访问模式选择正确的客户端类型
+    if config.access_mode == DatabaseAccessMode.REMOTE:
+        from .http_client import HTTPDatabaseClient
+        return HTTPDatabaseClient(config)
+    else:
+        # LOCAL 和 CLOUD 模式都使用直接连接
+        return DatabaseClient(config)
+
+
 class DatabaseClient:
     """Modern async PostgreSQL database client with pgvector support"""
 
@@ -62,14 +76,19 @@ class DatabaseClient:
         """Initialize connection pool and setup database"""
         if self._initialized:
             return
-            
+
         try:
+            # Validate configuration
+            self.config.validate()
+
+            # Create connection pool
             self.pool = await asyncpg.create_pool(**self.config.to_dict())
             await self._setup_database()
             self._initialized = True
+
             from utils.logger import setup_logger
             logger = setup_logger(__name__)
-            logger.info(f"✅ Database client initialized: {self.config.host}:{self.config.port}/{self.config.database}")
+            logger.info(f"✅ Database client initialized ({self.config.access_mode.value}): {self.config.current_host}:{self.config.current_port}/{self.config.current_database}")
 
         except Exception as e:
             from utils.logger import setup_logger
@@ -160,3 +179,29 @@ class DatabaseClient:
         """Fetch single value"""
         async with self.pool.acquire() as conn:
             return await conn.fetchval(query, *args)
+
+    async def get_pages_batch(self, batch_size: int = 5) -> List[str]:
+        """获取待爬取URL批次"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT url FROM pages
+                WHERE crawl_count = 0
+                ORDER BY created_at ASC
+                LIMIT $1
+            """, batch_size)
+            return [row['url'] for row in rows]
+
+    async def insert_page(self, url: str) -> bool:
+        """Insert URL with crawl_count=0 and last_crawled_at=NULL if not exists. Returns True if inserted."""
+        async with self.pool.acquire() as conn:
+            try:
+                result = await conn.execute("""
+                    INSERT INTO pages (url, crawl_count, content, last_crawled_at)
+                    VALUES ($1, 0, '', NULL)
+                    ON CONFLICT (url) DO NOTHING
+                """, url)
+                # 检查是否有行被影响（即是否插入了新记录）
+                # PostgreSQL的execute返回类似"INSERT 0 1"的字符串，其中最后的数字是affected rows
+                return result.split()[-1] != '0'
+            except Exception:
+                return False
