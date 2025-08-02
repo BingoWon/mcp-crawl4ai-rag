@@ -370,11 +370,14 @@ class Crawler:
 
     async def _store_pages_and_links(self, url_content_pairs: List[Tuple[str, str]],
                                    all_discovered_links: List[str]) -> None:
-        """批量存储页面和链接"""
-        # 批量更新页面内容
+        """批量存储页面和链接 - 404清理优化"""
+        # 批量更新页面内容，包含404检测和清理
         if url_content_pairs:
-            valid_count, empty_count = await self.db_operations.update_pages_batch(url_content_pairs)
+            valid_count, empty_count, deleted_count = await self.db_operations.update_pages_batch(url_content_pairs)
             logger.info(f"📊 Stored {len(url_content_pairs)} pages: {valid_count} valid, {empty_count} empty")
+
+            if deleted_count > 0:
+                logger.warning(f"🗑️ Deleted {deleted_count} invalid URLs (404 pages)")
 
         # 存储发现的链接
         if all_discovered_links:
