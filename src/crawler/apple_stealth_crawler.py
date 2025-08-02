@@ -43,6 +43,7 @@ CrawlerPool - Apple网站专用爬虫连接池
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from typing import Dict, List
 import asyncio
+import os
 from utils.logger import setup_logger
 import re
 import browser_cookie3
@@ -172,11 +173,15 @@ class CrawlerPool:
         }
 
     def _create_config(self, css_selector=None) -> CrawlerRunConfig:
-        """创建爬虫配置"""
+        """创建爬虫配置 - 支持环境变量动态配置"""
+        # 从环境变量读取配置参数
+        delay_before_return = int(os.getenv("CRAWLER_DELAY_BEFORE_RETURN", "5"))
+        page_timeout = int(os.getenv("CRAWLER_PAGE_TIMEOUT", "5000"))
+
         return CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS, # 必须使用 BYPASS！！！
-            delay_before_return_html=5,
-            page_timeout=5000,
+            delay_before_return_html=delay_before_return,
+            page_timeout=page_timeout,
             css_selector=css_selector,
             exclude_external_links=True,
             only_text=False,
