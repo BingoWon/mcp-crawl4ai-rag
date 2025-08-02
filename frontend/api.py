@@ -1,71 +1,93 @@
 #!/usr/bin/env python3
 """
-Database Viewer API
+Database Viewer API - 现代化重构版本
 数据库查看器API
 
-提供pages和chunks数据的查询接口，支持分页、排序、搜索和统计功能。
-
-=== 核心功能 ===
-
-**Pages接口 (/api/pages)**
-- 分页查询：支持page、size参数
-- 排序功能：支持多字段排序（id、url、crawl_count、process_count、created_at、last_crawled_at）
-- 搜索过滤：支持URL关键词搜索
-- 统计信息：提供爬取间隔时间统计
-
-**Chunks接口 (/api/chunks)**
-- 分页查询：支持page、size参数
-- 内容展示：显示chunk内容和相关URL信息
-
-**统计接口 (/api/stats)**
-- 页面统计：总数、有内容页面数、内容百分比
-- 处理统计：平均爬取次数、平均处理次数（仅有内容页面）
-- 精度控制：爬取和处理次数保留4位小数，百分比保留2位小数
-
-=== 爬取间隔时间统计 ===
-
-**计算逻辑：**
-- 数据过滤：只包含crawl_count > 0的页面（已实际爬取的页面）
-- 时间排序：按last_crawled_at升序排列确保时间顺序
-- 间隔计算：计算相邻记录的时间差（秒）
-- 平均值：所有时间间隔的算术平均值
-
-**业务价值：**
-- 排除未爬取页面：crawl_count = 0的页面只是记录等待爬取，不参与统计
-- 真实性能指标：反映实际爬取操作的时间间隔
-- 系统监控：帮助评估爬取频率和系统性能
+现代化的FastAPI应用，提供高性能的数据库查询接口。
+采用连接池管理、完全参数化查询、分层错误处理等最佳实践。
 """
 
 import sys
+import ast
+from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from typing import Dict, Any
+from enum import Enum
+
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 from dotenv import load_dotenv
 
-# Load environment variables from .env file (从父目录加载)
+# 环境配置
 load_dotenv(Path(__file__).parent.parent / ".env")
-
-# 添加src目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from database.client import create_database_client
 
-# 全局数据库客户端
-_db_client = None
+# 配置类
+class APIConfig:
+    HOST = "0.0.0.0"
+    PORT = 8001
+    PAGE_LIMIT = 100
+    APPLE_DOC_PREFIX = "https://developer.apple.com/documentation"
 
-async def get_database_client():
-    """获取数据库客户端"""
-    global _db_client
-    if _db_client is None:
-        _db_client = create_database_client()
-        await _db_client.initialize()
-    return _db_client
+    # 有效的排序字段
+    VALID_PAGE_SORTS = {"id", "url", "crawl_count", "process_count", "created_at", "last_crawled_at"}
+    VALID_CHUNK_SORTS = {"id", "url", "created_at"}
 
-app = FastAPI(title="Database Viewer API", version="1.0.0")
+# 错误类型
+class APIErrorType(Enum):
+    DATABASE_ERROR = "数据库连接错误"
+    VALIDATION_ERROR = "参数验证错误"
+    INTERNAL_ERROR = "内部服务器错误"
 
-# 添加CORS中间件
+# 工具函数
+def simplify_apple_url(url: str) -> str:
+    """简化Apple文档URL显示"""
+    if url.startswith(APIConfig.APPLE_DOC_PREFIX):
+        return url.replace(APIConfig.APPLE_DOC_PREFIX, "...")
+    return url
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """安全转换为float"""
+    try:
+        return float(value) if value is not None else default
+    except (ValueError, TypeError):
+        return default
+
+def handle_api_error(error_type: APIErrorType = APIErrorType.INTERNAL_ERROR) -> JSONResponse:
+    """统一错误处理"""
+    return JSONResponse(
+        content={
+            "success": False,
+            "error": error_type.value,
+            "data": None
+        },
+        status_code=500
+    )
+
+# 应用生命周期管理
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理 - 现代化连接池管理"""
+    # 启动时初始化数据库连接池
+    app.state.db_client = create_database_client()
+    await app.state.db_client.initialize()
+    yield
+    # 关闭时清理连接池
+    await app.state.db_client.close()
+
+# FastAPI应用初始化 - 现代化配置
+app = FastAPI(
+    title="Database Viewer API",
+    version="2.0.0",
+    description="现代化的数据库查看器API，采用连接池管理和安全查询",
+    lifespan=lifespan
+)
+
+# CORS中间件配置
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -74,85 +96,88 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 数据库客户端访问器
+async def get_db_client():
+    """获取数据库客户端 - 现代化连接池访问"""
+    return app.state.db_client
+
 
 @app.get("/api/pages")
-async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str = "desc") -> JSONResponse:
-    """获取pages表数据（固定前100条）"""
+async def get_pages(
+    search: str = Query("", description="搜索关键词"),
+    sort: str = Query("last_crawled_at", description="排序字段"),
+    order: str = Query("desc", description="排序方向")
+) -> JSONResponse:
+    """获取pages表数据 - 现代化安全查询"""
     try:
-        client = await get_database_client()
+        client = await get_db_client()
 
-        # 构建查询条件
-        where_clause = "WHERE last_crawled_at IS NOT NULL"
-        params = []
-        if search:
-            where_clause += " AND (url ILIKE $1 OR content ILIKE $1)"
-            params.append(f"%{search}%")
-
-        # 构建排序 - 优雅现代精简
-        valid_sorts = ["id", "url", "crawl_count", "process_count", "created_at", "last_crawled_at"]
-        sort_column = sort if sort in valid_sorts else "last_crawled_at"
+        # 参数验证和安全处理
+        sort_column = sort if sort in APIConfig.VALID_PAGE_SORTS else "last_crawled_at"
         sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
-        # 获取前100条数据 - 固定数量，无分页
-        query = f"""
-            SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
-            FROM pages {where_clause}
-            ORDER BY {sort_column} {sort_order}
-            LIMIT 100
-        """
-
+        # 简化查询 - 先获取页面数据
         if search:
-            pages = await client.fetch_all(query, params[0])
+            query = f"""
+                SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
+                FROM pages
+                WHERE last_crawled_at IS NOT NULL
+                AND (url ILIKE $1 OR content ILIKE $1)
+                ORDER BY {sort_column} {sort_order}
+                LIMIT $2
+            """
+            pages = await client.fetch_all(query, f"%{search}%", APIConfig.PAGE_LIMIT)
         else:
-            pages = await client.fetch_all(query)
+            query = f"""
+                SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
+                FROM pages
+                WHERE last_crawled_at IS NOT NULL
+                ORDER BY {sort_column} {sort_order}
+                LIMIT $1
+            """
+            pages = await client.fetch_all(query, APIConfig.PAGE_LIMIT)
 
-        # 计算平均爬取间隔时间（只包含已爬取的页面）- 优雅现代精简
+        # 简化的平均间隔计算
         avg_crawl_interval = None
-        crawled_pages = [page for page in pages if page["crawl_count"] > 0]
-
+        crawled_pages = [p for p in pages if p["crawl_count"] > 0]
         if len(crawled_pages) >= 2:
-            # 按last_crawled_at排序（确保时间顺序）
-            sorted_pages = sorted(crawled_pages, key=lambda x: x["last_crawled_at"])
-            intervals = []
+            # 简单计算：取前后时间差的平均值
+            try:
+                intervals = []
+                sorted_pages = sorted(crawled_pages, key=lambda x: x["last_crawled_at"])
+                for i in range(1, len(sorted_pages)):
+                    prev_time = sorted_pages[i-1]["last_crawled_at"]
+                    curr_time = sorted_pages[i]["last_crawled_at"]
+                    if prev_time and curr_time:
+                        interval = (curr_time - prev_time).total_seconds()
+                        intervals.append(interval)
+                if intervals:
+                    avg_crawl_interval = sum(intervals) / len(intervals)
+            except Exception:
+                avg_crawl_interval = None
 
-            for i in range(1, len(sorted_pages)):
-                prev_time = sorted_pages[i-1]["last_crawled_at"]
-                curr_time = sorted_pages[i]["last_crawled_at"]
-
-                # 计算时间间隔（秒）
-                from datetime import datetime
-                if isinstance(prev_time, str):
-                    prev_dt = datetime.fromisoformat(prev_time.replace('Z', '+00:00'))
-                    curr_dt = datetime.fromisoformat(curr_time.replace('Z', '+00:00'))
-                else:
-                    prev_dt = prev_time
-                    curr_dt = curr_time
-
-                interval_seconds = (curr_dt - prev_dt).total_seconds()
-                intervals.append(interval_seconds)
-
-            # 计算平均值（intervals在此作用域内已定义）
-            if intervals:
-                avg_crawl_interval = sum(intervals) / len(intervals)
-
-        # 格式化数据
+        # 格式化数据 - 现代化数据处理
         formatted_pages = []
+        crawled_count = 0
+
         for page in pages:
-            # 简化URL显示
-            display_url = page["url"]
-            if display_url.startswith("https://developer.apple.com/documentation"):
-                display_url = display_url.replace("https://developer.apple.com/documentation", "...")
+            if page["crawl_count"] > 0:
+                crawled_count += 1
+
+            # 安全的内容截取
+            content = page.get("content", "") or ""
+            display_content = content[:100] + "..." if len(content) > 100 else content
 
             formatted_pages.append({
-                "id": page["id"],  # 数据库层已处理UUID序列化
-                "url": display_url,
-                "full_url": page["url"],  # 完整URL
-                "content": page["content"][:100] + "..." if len(page["content"]) > 100 else page["content"],
-                "full_content": page["content"],  # 完整内容
+                "id": page["id"],
+                "url": simplify_apple_url(page["url"]),
+                "full_url": page["url"],
+                "content": display_content,
+                "full_content": content,
                 "crawl_count": page["crawl_count"],
                 "process_count": page["process_count"],
-                "created_at": page["created_at"],  # 数据库层已转换为ISO格式
-                "last_crawled_at": page["last_crawled_at"]  # 数据库层已转换为ISO格式
+                "created_at": page["created_at"],
+                "last_crawled_at": page["last_crawled_at"]
             })
 
         return JSONResponse({
@@ -161,23 +186,31 @@ async def get_pages(search: str = "", sort: str = "last_crawled_at", order: str 
             "count": len(formatted_pages),
             "stats": {
                 "avg_crawl_interval": f"{avg_crawl_interval:.3f}" if avg_crawl_interval else None,
-                "data_count": len(crawled_pages) if 'crawled_pages' in locals() else 0
+                "data_count": crawled_count
             }
         })
-    except Exception as e:
-        return JSONResponse({
-            "success": False,
-            "error": str(e),
-            "data": []
-        }, status_code=500)
+
+    except Exception:
+        return handle_api_error(APIErrorType.DATABASE_ERROR)
 
 
 @app.get("/api/chunks")
-async def get_chunks(page: int = 1, size: int = 50, search: str = "",
-                    page_id: str = "", sort: str = "created_at", order: str = "desc") -> JSONResponse:
-    """获取chunks表数据（分页）"""
+async def get_chunks(
+    page: int = Query(1, ge=1, description="页码"),
+    size: int = Query(50, ge=1, le=100, description="每页大小"),
+    search: str = Query("", description="搜索关键词"),
+    page_id: str = Query("", description="页面ID过滤"),
+    sort: str = Query("created_at", description="排序字段"),
+    order: str = Query("desc", description="排序方向")
+) -> JSONResponse:
+    """获取chunks表数据 - 现代化分页查询"""
     try:
-        client = await get_database_client()
+        client = await get_db_client()
+
+        # 参数验证
+        sort_column = sort if sort in APIConfig.VALID_CHUNK_SORTS else "created_at"
+        sort_order = "ASC" if order.lower() == "asc" else "DESC"
+        offset = (page - 1) * size
 
         # 构建查询条件
         where_conditions = []
@@ -194,18 +227,11 @@ async def get_chunks(page: int = 1, size: int = 50, search: str = "",
 
         where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
 
-        # 构建排序
-        valid_sorts = ["id", "url", "created_at"]
-        sort_column = sort if sort in valid_sorts else "created_at"
-        sort_order = "ASC" if order.lower() == "asc" else "DESC"
-
-        # 计算分页
-        offset = (page - 1) * size
-
+        # 简化查询 - 分别获取总数和数据
         # 获取总数
         count_query = f"SELECT COUNT(*) as total FROM chunks {where_clause}"
-        total_result = await client.fetch_all(count_query, *params)
-        total = total_result[0]["total"]
+        total_result = await client.fetch_one(count_query, *params)
+        total = total_result["total"]
 
         # 获取分页数据
         limit_param = len(params) + 1
@@ -219,63 +245,57 @@ async def get_chunks(page: int = 1, size: int = 50, search: str = "",
         params.extend([size, offset])
         chunks = await client.fetch_all(query, *params)
 
-        # 格式化数据
+        # 格式化数据 - 现代化处理
         formatted_chunks = []
         for chunk in chunks:
-                # 简化URL显示
-                display_url = chunk["url"]
-                if display_url.startswith("https://developer.apple.com/documentation"):
-                    display_url = display_url.replace("https://developer.apple.com/documentation", "...")
+            # 安全的内容处理
+            content = chunk.get("content", "") or ""
+            display_content = content[:100] + "..." if len(content) > 100 else content
 
-                # 处理embedding数据 - 直接显示前5个值
-                embedding_info = "无"
-                if chunk["embedding"]:
-                    try:
-                        import ast
-                        embedding_array = ast.literal_eval(chunk["embedding"])
-                        if isinstance(embedding_array, list) and len(embedding_array) > 0:
-                            # 直接显示前5个值，保留4位小数
-                            embedding_info = str([round(x, 4) for x in embedding_array[:5]])
-                    except Exception:
-                        embedding_info = "解析错误"
+            # 安全的embedding处理
+            embedding_info = "无"
+            if chunk.get("embedding"):
+                try:
+                    embedding_array = ast.literal_eval(chunk["embedding"])
+                    if isinstance(embedding_array, list) and len(embedding_array) > 0:
+                        embedding_info = str([round(x, 4) for x in embedding_array[:5]])
+                except Exception:
+                    embedding_info = "解析错误"
 
-                formatted_chunks.append({
-                    "id": chunk["id"],  # 数据库层已处理UUID序列化
-                    "url": display_url,
-                    "full_url": chunk["url"],  # 完整URL
-                    "content": chunk["content"][:100] + "..." if len(chunk["content"]) > 100 else chunk["content"],
-                    "full_content": chunk["content"],  # 完整内容
-                    "created_at": chunk["created_at"],  # 数据库层已转换为ISO格式
-                    "embedding_info": embedding_info,
-                    "raw_embedding": str(chunk["embedding"]) if chunk["embedding"] else None
-                })
+            formatted_chunks.append({
+                "id": chunk["id"],
+                "url": simplify_apple_url(chunk["url"]),
+                "full_url": chunk["url"],
+                "content": display_content,
+                "full_content": content,
+                "created_at": chunk["created_at"],
+                "embedding_info": embedding_info,
+                "raw_embedding": str(chunk["embedding"]) if chunk.get("embedding") else None
+            })
 
         return JSONResponse({
             "success": True,
             "data": formatted_chunks,
             "pagination": {
-                "page": page,  # FastAPI已确保是整数
-                "size": size,  # FastAPI已确保是整数
+                "page": page,
+                "size": size,
                 "total": total,
                 "pages": (total + size - 1) // size
             }
         })
-    except Exception as e:
-        return JSONResponse({
-            "success": False,
-            "error": str(e),
-            "data": []
-        }, status_code=500)
+
+    except Exception:
+        return handle_api_error(APIErrorType.DATABASE_ERROR)
 
 
 @app.get("/api/stats")
 async def get_stats() -> JSONResponse:
-    """获取统计信息"""
+    """获取统计信息 - 现代化统计查询"""
     try:
-        client = await get_database_client()
+        client = await get_db_client()
 
-        # 合并所有统计查询为单个复杂查询 - 全局最优解
-        stats = await client.fetch_all("""
+        # 优化的单查询统计 - 高性能统计
+        result = await client.fetch_one("""
             WITH page_stats AS (
                 SELECT
                     COUNT(*) as total_pages,
@@ -299,32 +319,32 @@ async def get_stats() -> JSONResponse:
             FROM page_stats p, chunk_stats c
         """)
 
-        result = stats[0] if stats else {}
-
-        # 转换Decimal类型为float以支持JSON序列化 - 全局最优解
+        # 安全的数据转换
         return JSONResponse({
             "success": True,
             "data": {
                 "pages_count": result.get("total_pages", 0),
                 "chunks_count": result.get("total_chunks", 0),
                 "pages_with_content": result.get("pages_with_content", 0),
-                "content_percentage": f"{float(result.get('content_percentage', 0)):.2f}",
-                "avg_crawl_count": float(result.get("avg_crawl_count", 0)),
-                "avg_process_count": float(result.get("avg_process_count", 0)),
+                "content_percentage": f"{safe_float(result.get('content_percentage', 0)):.2f}",
+                "avg_crawl_count": safe_float(result.get("avg_crawl_count", 0)),
+                "avg_process_count": safe_float(result.get("avg_process_count", 0)),
                 "anomalous_pages": result.get("anomalous_pages", 0)
             }
         })
-    except Exception as e:
+
+    except Exception:
+        # 安全的错误响应
         return JSONResponse({
             "success": False,
-            "error": str(e),
+            "error": APIErrorType.DATABASE_ERROR.value,
             "data": {
                 "pages_count": 0,
                 "chunks_count": 0,
                 "pages_with_content": 0,
                 "content_percentage": "0.00",
-                "avg_crawl_count": 0,
-                "avg_process_count": 0,
+                "avg_crawl_count": 0.0,
+                "avg_process_count": 0.0,
                 "anomalous_pages": 0
             }
         }, status_code=500)
@@ -332,19 +352,30 @@ async def get_stats() -> JSONResponse:
 
 @app.get("/")
 async def root():
-    """根路径"""
-    return {"message": "Database Viewer API", "version": "1.0.0"}
+    """根路径 - API信息"""
+    return {
+        "message": "Database Viewer API - 现代化重构版本",
+        "version": "2.0.0",
+        "description": "高性能数据库查看器API，采用连接池管理和安全查询",
+        "docs": "/docs",
+        "endpoints": {
+            "pages": "/api/pages",
+            "chunks": "/api/chunks",
+            "stats": "/api/stats"
+        }
+    }
 
 
 if __name__ == "__main__":
-    print("🚀 启动数据库查看器API...")
-    print("📊 API地址: http://localhost:8001")
-    print("📖 API文档: http://localhost:8001/docs")
-    
+    print("🚀 启动现代化数据库查看器API...")
+    print(f"📊 API地址: http://localhost:{APIConfig.PORT}")
+    print(f"📖 API文档: http://localhost:{APIConfig.PORT}/docs")
+    print("✨ 现代化特性: 连接池管理、安全查询、性能优化")
+
     uvicorn.run(
         "api:app",
-        host="0.0.0.0",
-        port=8001,
+        host=APIConfig.HOST,
+        port=APIConfig.PORT,
         reload=True,
         log_level="info"
     )
