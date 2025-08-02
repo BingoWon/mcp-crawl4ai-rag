@@ -29,21 +29,46 @@ logger = setup_logger(__name__)
 
 # Configuration from environment variables
 TARGET_URL = os.getenv("TARGET_URL", "https://developer.apple.com/documentation/")
+ENABLE_CRAWLER = os.getenv("ENABLE_CRAWLER", "true").lower() == "true"
+ENABLE_PROCESSOR = os.getenv("ENABLE_PROCESSOR", "true").lower() == "true"
 
 
 async def main():
-    """Unified crawler system with integrated crawling and processing"""
+    """Unified crawler system with configurable components"""
     logger.info("🚀 Unified Crawler System Starting")
     logger.info(f"Target: {TARGET_URL}")
-    logger.info("Running integrated crawling and processing...")
+    logger.info(f"Components: Crawler={ENABLE_CRAWLER}, Processor={ENABLE_PROCESSOR}")
+
+    # Validate configuration
+    if not ENABLE_CRAWLER and not ENABLE_PROCESSOR:
+        logger.warning("⚠️ Both crawler and processor are disabled. System will exit.")
+        return
 
     try:
-        # Start both crawler and processor concurrently
-        async with Crawler() as crawler, Processor() as processor:
-            await asyncio.gather(
-                crawler.start_crawling(TARGET_URL),
-                processor.start_processing()
-            )
+        # Log enabled components
+        if ENABLE_CRAWLER:
+            logger.info("✅ Crawler component enabled")
+
+        if ENABLE_PROCESSOR:
+            logger.info("✅ Processor component enabled")
+
+        # Start enabled components
+        if ENABLE_CRAWLER and ENABLE_PROCESSOR:
+            # Both components enabled
+            async with Crawler() as crawler, Processor() as processor:
+                await asyncio.gather(
+                    crawler.start_crawling(TARGET_URL),
+                    processor.start_processing()
+                )
+        elif ENABLE_CRAWLER:
+            # Only crawler enabled
+            async with Crawler() as crawler:
+                await crawler.start_crawling(TARGET_URL)
+        elif ENABLE_PROCESSOR:
+            # Only processor enabled
+            async with Processor() as processor:
+                await processor.start_processing()
+
     except KeyboardInterrupt:
         logger.info("Unified system interrupted by user")
     except Exception as e:

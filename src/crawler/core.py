@@ -27,22 +27,19 @@ Worker Pool爬虫系统 - 优雅现代精简的全局最优解
 - 资源利用率：90-98%（无空闲时间）
 - 并发控制：固定Worker数量，完全可控
 - 内存使用：稳定可预测，适合长期运行
-- 扩展性：调整MAX_WORKERS即可线性扩展
+- 扩展性：调整WORKER_BATCH_SIZE即可线性扩展
 
 🎯 使用方式：
     async with BatchCrawler() as crawler:
         await crawler.start_crawling("https://developer.apple.com/documentation/swiftui")
 
 ⚙️ 环境变量配置：
-- MAX_WORKERS: 统一控制Worker数量 (默认: 5)
+- WORKER_BATCH_SIZE: 统一控制Worker数量和批处理大小 (默认: 5)
 - CRAWLER_DUAL_CRAWL_ENABLED: 是否启用双重爬取模式 (默认: false)
 
-🎯 业务超参数（唯一的环境变量）：
-- CRAWL_BATCH_SIZE: 爬取批次大小，控制每次获取多少URL (默认: 10)
-
-📊 派生业务参数（基于CRAWL_BATCH_SIZE自动计算）：
-- PAGES_STORAGE_THRESHOLD: 页面存储阈值 = CRAWL_BATCH_SIZE
-- LINKS_STORAGE_THRESHOLD: 链接存储阈值 = CRAWL_BATCH_SIZE * 2
+🎯 全局最优解：
+- Worker数量 = 批处理大小 = 队列大小 = WORKER_BATCH_SIZE
+- 完美的1:1:1对应关系，消除资源浪费和等待时间
 
 🔧 技术参数（硬编码）：
 - STORAGE_CHECK_INTERVAL: 存储检查间隔，30秒
@@ -78,8 +75,8 @@ class Crawler:
     APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
     NOT_FOUND_MESSAGE = "The page you're looking for can't be found."
 
-    # 业务超参数 - 核心配置
-    CRAWL_BATCH_SIZE = 10         # 爬取批次大小，唯一的环境变量业务超参数
+    # 全局最优解参数 - 统一控制
+    WORKER_BATCH_SIZE = 5         # 默认值，环境变量可覆盖
 
     # 技术参数 - 硬编码常量
     NO_URLS_SLEEP_INTERVAL = 5
@@ -88,18 +85,9 @@ class Crawler:
 
     def __init__(self):
         """Initialize Worker Pool Crawler - 全局最优解"""
-        # 统一变量控制整个系统
-        self.max_workers = int(os.getenv("MAX_WORKERS", "5"))
+        # 统一参数控制整个系统 - 1:1:1完美对应
+        self.worker_batch_size = int(os.getenv("WORKER_BATCH_SIZE", str(self.WORKER_BATCH_SIZE)))
         self.dual_crawl_enabled = os.getenv("CRAWLER_DUAL_CRAWL_ENABLED", "false").lower() == "true"
-
-        # 业务超参数配置 - 只有CRAWL_BATCH_SIZE是环境变量
-        self.crawl_batch_size = int(os.getenv("CRAWL_BATCH_SIZE", str(self.CRAWL_BATCH_SIZE)))
-
-        # 其他业务超参数基于CRAWL_BATCH_SIZE计算
-        self.pages_storage_threshold = self.crawl_batch_size  # 默认等于CRAWL_BATCH_SIZE
-        self.links_storage_threshold = self.crawl_batch_size * 2  # 默认是CRAWL_BATCH_SIZE的两倍
-
-        # 技术参数 - 全部硬编码，无环境变量
 
         # 系统组件
         self.db_client = None
@@ -111,10 +99,9 @@ class Crawler:
         self.storage_buffer = []
         self.storage_lock = asyncio.Lock()
 
-        logger.info(f"Worker Pool Crawler: max_workers={self.max_workers}, dual_crawl={self.dual_crawl_enabled}")
-        logger.info(f"Crawler Business Params: crawl_batch={self.crawl_batch_size} (env), "
-                   f"pages_threshold={self.pages_storage_threshold} (=batch), links_threshold={self.links_storage_threshold} (=batch*2)")
-        logger.info(f"Crawler Tech Params: storage_interval={self.STORAGE_CHECK_INTERVAL}s, "
+        logger.info(f"Worker Pool Crawler: worker_batch_size={self.worker_batch_size}, dual_crawl={self.dual_crawl_enabled}")
+        logger.info(f"Global Optimal: workers=batch=queue={self.worker_batch_size} (1:1:1 perfect match)")
+        logger.info(f"Tech Params: storage_interval={self.STORAGE_CHECK_INTERVAL}s, "
                    f"no_urls_sleep={self.NO_URLS_SLEEP_INTERVAL}s, url_check={self.URL_CHECK_INTERVAL}s")
         
     async def __aenter__(self):
@@ -136,13 +123,13 @@ class Crawler:
         self.db_operations = DatabaseOperations(self.db_client)
 
         # 初始化爬虫池
-        self.crawler_pool = CrawlerPool(pool_size=self.max_workers)
+        self.crawler_pool = CrawlerPool(pool_size=self.worker_batch_size)
         await self.crawler_pool.initialize()
 
-        # 初始化URL队列
-        self.url_queue = asyncio.Queue(maxsize=self.max_workers * 2)
+        # 初始化URL队列 - 1:1:1完美对应
+        self.url_queue = asyncio.Queue(maxsize=self.worker_batch_size)
 
-        logger.info(f"Worker Pool initialized: {self.max_workers} workers")
+        logger.info(f"Worker Pool initialized: {self.worker_batch_size} workers")
 
     async def cleanup(self) -> None:
         """优雅的资源清理"""
@@ -186,7 +173,7 @@ class Crawler:
         # Insert start URL if not exists
         await self.db_operations.insert_url_if_not_exists(start_url)
         crawl_mode = "dual" if self.dual_crawl_enabled else "single"
-        logger.info(f"Starting Worker Pool Crawler: {self.max_workers} workers, {crawl_mode} mode")
+        logger.info(f"Starting Worker Pool Crawler: {self.worker_batch_size} workers, {crawl_mode} mode")
 
         # 启动Worker Pool架构
         await self._run_worker_pool()
@@ -203,10 +190,10 @@ class Crawler:
             # 启动固定数量的worker - 现代化语法
             workers = [
                 asyncio.create_task(self._crawler_worker(i))
-                for i in range(self.max_workers)
+                for i in range(self.worker_batch_size)
             ]
 
-            logger.info(f"Worker Pool started: {self.max_workers} workers")
+            logger.info(f"Worker Pool started: {self.worker_batch_size} workers")
 
             # 等待所有组件
             await asyncio.gather(url_supplier, storage_manager, *workers)
@@ -221,10 +208,10 @@ class Crawler:
         """URL供应器 - 维持URL队列充足"""
         while True:
             try:
-                if self.url_queue.qsize() < self.max_workers:
+                if self.url_queue.qsize() < self.worker_batch_size:
                     # URL不足，批量获取补充
                     batch_urls = await self.db_operations.get_urls_batch(
-                        self.crawl_batch_size
+                        self.worker_batch_size
                     )
 
                     if batch_urls:
@@ -323,7 +310,7 @@ class Crawler:
 
         async with self.storage_lock:
             self.storage_buffer.append(result)
-            should_flush = len(self.storage_buffer) >= self.max_workers
+            should_flush = len(self.storage_buffer) >= self.worker_batch_size
 
         # 在锁外执行耗时操作
         if should_flush:
