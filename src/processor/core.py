@@ -1,40 +1,22 @@
 """
-流水线Processor系统 - 优雅现代精简的全局最优解
+Processor - 跨URL批量Embedding处理器
 
-本模块实现了针对Local Embedding特性优化的流水线处理架构，完美解决供需匹配问题。
-系统采用大量内容获取 + 线性处理 + 独立存储阈值的流水线设计。
+实现跨URL chunks收集和批量处理。
 
-🏗️ 核心架构：
-- 内容获取池：大量获取待处理内容，确保供应充足
-- 线性处理：适配Local Embedding的线性特性，无并发冲突
-- 结果缓冲池：独立存储阈值，批量存储优化数据库效率
-- 流水线设计：获取、处理、存储三个环节独立优化
+核心机制：
+- 跨URL收集chunks到chunk_buffer
+- 达到阈值时批量处理
+- API模式：真正的批量embedding (单次API调用)
+- 本地模式：逐个embedding处理
+- 批量storage (删除+插入)
 
-🚀 技术特性：
-- 供需平衡：解决Embedding快速处理(<1秒)的供需匹配问题
-- 线性优化：完美适配Local模型必须线性处理的特性
-- 批量优化：大量获取减少数据库I/O，批量存储提升效率
-- 独立控制：获取、处理、存储三个阈值独立可控
+环境变量：
+- PROCESSOR_CONTENT_FETCH_SIZE: 内容获取批次 (默认50)
+- PROCESSOR_CHUNK_BATCH_SIZE: chunks批处理阈值 (默认50)
 
-⚡ 性能特征：
-- 处理速度：Embedding <1秒，系统瓶颈只在处理速度
-- 资源利用：内容供应充足，模型不会空闲等待
-- 数据库效率：批量操作减少90%的数据库交互
-- 扩展性：阈值参数可灵活调整，适应不同场景
-
-🎯 使用方式：
-    async with StreamlineProcessor() as processor:
+使用方式：
+    async with Processor() as processor:
         await processor.start_processing()
-
-⚙️ 环境变量配置：
-- CONTENT_FETCH_SIZE: 内容获取批次大小 (默认: 50)
-- STORAGE_THRESHOLD: 存储阈值 (默认: 30)
-
-🎨 代码质量：
-- 优雅度：⭐⭐⭐⭐⭐ 常量定义清晰，流水线架构优美
-- 现代化：⭐⭐⭐⭐⭐ 使用最新Python特性和最佳实践
-- 精简度：⭐⭐⭐⭐⭐ 消除所有冗余，代码极简
-- 有效性：⭐⭐⭐⭐⭐ 完美适配Local Embedding特性
 """
 
 import sys
@@ -54,32 +36,31 @@ from utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-class StreamlineProcessor:
-    """流水线处理器 - 优雅现代精简"""
+class Processor:
+    """跨URL批量Embedding处理器"""
 
-    # 常量定义 - 消除魔法数字，考虑Chunking放大效应
-    CONTENT_FETCH_SIZE = 50
-    STORAGE_THRESHOLD = 10  # 考虑chunking放大效应，避免频繁存储
-    BUFFER_CHECK_INTERVAL = 1.0  # 1秒检查，避免频繁数据库访问
+    # 系统常量
+    BUFFER_CHECK_INTERVAL = 1.0
     NO_CONTENT_SLEEP_INTERVAL = 3
     MIN_CHUNK_LENGTH = 128
 
     def __init__(self):
-        # 流水线组件
+        # 三层参数设计：主参数 + 自动计算
+        self.content_fetch_size = int(os.getenv("PROCESSOR_CONTENT_FETCH_SIZE", "50"))
+        self.chunk_buffer_limit = max(4, self.content_fetch_size // 2)
+        self.chunk_batch_size = max(2, self.chunk_buffer_limit // 2)
+
+        # 核心组件
         self.db_client = None
         self.db_operations = None
         self.chunker = SmartChunker()
 
-        # 流水线缓冲池
+        # 缓冲池
         self.content_buffer: List[Tuple[str, str]] = []
-        self.result_buffer: List[Dict[str, Any]] = []
+        self.chunk_buffer: List[Dict[str, Any]] = []
 
-        # 配置参数
-        self.content_fetch_size = int(os.getenv("CONTENT_FETCH_SIZE", str(self.CONTENT_FETCH_SIZE)))
-        self.storage_threshold = int(os.getenv("STORAGE_THRESHOLD", str(self.STORAGE_THRESHOLD)))
-
-        logger.info(f"Streamline Processor: fetch_size={self.content_fetch_size}, "
-                   f"storage_threshold={self.storage_threshold}")
+        logger.info(f"Processor: content_fetch={self.content_fetch_size}, "
+                   f"buffer_limit={self.chunk_buffer_limit}, batch={self.chunk_batch_size}")
 
     async def __aenter__(self):
         await self.initialize()
@@ -90,131 +71,160 @@ class StreamlineProcessor:
 
     async def initialize(self) -> None:
         """Initialize database connections"""
-        logger.info("Initializing streamline processor")
+        logger.info("Initializing processor")
         self.db_client = create_database_client()
         await self.db_client.initialize()
         self.db_operations = DatabaseOperations(self.db_client)
 
     async def cleanup(self) -> None:
-        """Clean up resources"""
-        logger.info("Cleaning up processor resources")
+        """Clean up resources - 处理剩余chunks"""
+        # 处理剩余的chunks
+        if self.chunk_buffer:
+            logger.info(f"Processing remaining {len(self.chunk_buffer)} chunks before cleanup")
+            await self._execute_unified_batch()
+
+        if self.db_client:
+            await self.db_client.close()
+            logger.info("Database client closed")
 
     async def start_processing(self) -> None:
-        """流水线处理循环 - 全局最优解"""
-        logger.info("Starting streamline processor")
+        """启动并发处理器池 - 全局最优解"""
+        logger.info("Starting processor pool")
+        await self._run_processor_pool()
 
+    async def _run_processor_pool(self) -> None:
+        """处理器池架构 - 三个独立并发进程"""
+        try:
+            # 启动三个独立进程
+            content_supplier = asyncio.create_task(self._content_supplier())
+            chunk_processor = asyncio.create_task(self._chunk_processor())
+            batch_manager = asyncio.create_task(self._batch_manager())
+
+            logger.info("Processor pool started: 3 concurrent processes")
+
+            # 所有进程并发运行
+            await asyncio.gather(content_supplier, chunk_processor, batch_manager)
+
+        except KeyboardInterrupt:
+            logger.info("Processor pool interrupted by user")
+        except Exception as e:
+            logger.error(f"Processor pool error: {e}")
+            raise
+
+    async def _content_supplier(self) -> None:
+        """内容供应器 - 独立进程，50%阈值触发补充"""
         while True:
             try:
-                # 1. 确保内容供应充足
-                await self._ensure_content_supply()
+                # 50%阈值策略：低于50%才请求下一批
+                if len(self.content_buffer) < self.content_fetch_size // 2:
+                    batch_results = await self.db_operations.get_process_urls_batch(self.content_fetch_size)
+                    if batch_results:
+                        self.content_buffer.extend(batch_results)
+                        logger.debug(f"Content supplier: added {len(batch_results)} items")
 
-                # 2. 线性处理单个内容
-                if self.content_buffer:
-                    await self._process_single_content()
-
-                # 3. 检查并批量存储
-                await self._check_and_store()
-
-                # 4. 短暂等待，避免CPU占用过高
                 await asyncio.sleep(self.BUFFER_CHECK_INTERVAL)
 
-            except KeyboardInterrupt:
-                logger.info("Streamline processor interrupted by user")
-                break
             except Exception as e:
-                logger.error(f"Streamline processor error: {e}")
+                logger.error(f"Content supplier error: {e}")
                 await asyncio.sleep(self.NO_CONTENT_SLEEP_INTERVAL)
 
-    async def _ensure_content_supply(self) -> None:
-        """确保内容供应充足 - 大量获取策略"""
-        if len(self.content_buffer) < self.content_fetch_size // 2:
-            # 内容不足，大量获取补充
-            batch_results = await self.db_operations.get_process_urls_batch(self.content_fetch_size)
+    async def _chunk_processor(self) -> None:
+        """块处理器 - 独立进程，流量控制 + 连续处理"""
+        while True:
+            try:
+                # 流量控制：超过buffer限制时等待
+                if len(self.chunk_buffer) > self.chunk_buffer_limit:
+                    await asyncio.sleep(0.1)
+                    continue
 
-            if batch_results:
-                self.content_buffer.extend(batch_results)
-                logger.info(f"Content Supply: Added {len(batch_results)} contents, "
-                           f"buffer size: {len(self.content_buffer)}")
+                if self.content_buffer:
+                    url, content = self.content_buffer.pop(0)
 
-    async def _process_single_content(self) -> None:
-        """线性处理单个内容 - 适配Local Embedding特性"""
-        if not self.content_buffer:
-            return
+                    if content.strip():
+                        chunks = self.chunker.chunk_text(content)
+                        valid_chunks = [
+                            chunk for chunk in chunks
+                            if chunk.strip() and len(chunk) >= self.MIN_CHUNK_LENGTH
+                        ]
 
-        url, content = self.content_buffer.pop(0)
+                        for chunk in valid_chunks:
+                            self.chunk_buffer.append({"url": url, "content": chunk})
 
-        if not content.strip():
+                        if valid_chunks:
+                            logger.debug(f"Chunk processor: processed {len(valid_chunks)} chunks")
+
+                    # 有内容时继续处理，不sleep
+                    continue
+                else:
+                    # 无内容时才sleep
+                    await asyncio.sleep(0.1)
+
+            except Exception as e:
+                logger.error(f"Chunk processor error: {e}")
+                await asyncio.sleep(self.NO_CONTENT_SLEEP_INTERVAL)
+
+    async def _batch_manager(self) -> None:
+        """批处理管理器 - 独立进程，固定1秒间隔检测"""
+        while True:
+            try:
+                if len(self.chunk_buffer) >= self.chunk_batch_size:
+                    await self._execute_unified_batch()
+
+                # 固定1秒间隔检测
+                await asyncio.sleep(1.0)
+
+            except Exception as e:
+                logger.error(f"Batch manager error: {e}")
+                await asyncio.sleep(self.NO_CONTENT_SLEEP_INTERVAL)
+
+    async def _execute_unified_batch(self) -> None:
+        """执行统一批处理：embedding + storage 一体化"""
+        if not self.chunk_buffer:
             return
 
         start_time = time.perf_counter()
 
-        # 分块处理
-        chunks = self.chunker.chunk_text(content)
-        valid_chunks = [
-            chunk for chunk in chunks
-            if chunk.strip() and len(chunk) >= self.MIN_CHUNK_LENGTH
-        ]
+        # 1. 提取所有chunks文本
+        chunk_texts = [item["content"] for item in self.chunk_buffer]
 
-        if not valid_chunks:
-            return
-
-        # 线性embedding处理 - 现代化条件表达式
+        # 2. 批量embedding处理 - 真正的跨URL批处理
         embedder = get_embedder()
-        embeddings = (
-            await embedder.encode_batch_concurrent(valid_chunks)
-            if isinstance(embedder, SiliconFlowProvider)
-            else [create_embedding(chunk) for chunk in valid_chunks]
-        )
+        if isinstance(embedder, SiliconFlowProvider):
+            embeddings = await embedder.encode_batch_concurrent(chunk_texts)
+            logger.info(f"✅ True batch embedding: {len(chunk_texts)} chunks in single API call")
+        else:
+            embeddings = [create_embedding(chunk) for chunk in chunk_texts]
+            logger.info(f"✅ Local embedding: {len(chunk_texts)} chunks processed")
 
-        # 添加到结果缓冲池
-        result = {
-            "url": url,
-            "chunks": valid_chunks,
-            "embeddings": embeddings
-        }
-        self.result_buffer.append(result)
-
-        processing_time = time.perf_counter() - start_time
-        logger.debug(f"Processed {url}: {len(valid_chunks)} chunks in {processing_time:.2f}s")
-
-    async def _check_and_store(self) -> None:
-        """检查并批量存储 - 独立存储阈值"""
-        if len(self.result_buffer) >= self.storage_threshold:
-            await self._flush_result_buffer()
-
-    async def _flush_result_buffer(self) -> None:
-        """清空结果缓冲池 - 批量存储优化"""
-        if not self.result_buffer:
-            return
-
-        # 现代化数据处理 - 使用列表推导式
-        urls_to_process = [result["url"] for result in self.result_buffer]
+        # 3. 准备批量存储数据
         all_data_to_insert = [
             {
-                "url": result["url"],
-                "content": chunk,
-                "embedding": str(embedding)
+                "url": self.chunk_buffer[i]["url"],
+                "content": self.chunk_buffer[i]["content"],
+                "embedding": str(embeddings[i])
             }
-            for result in self.result_buffer
-            for chunk, embedding in zip(result["chunks"], result["embeddings"])
+            for i in range(len(self.chunk_buffer))
         ]
 
-        # 批量删除旧chunks
+        # 4. 获取涉及的URLs并批量删除旧chunks
+        urls_to_process = list(set(item["url"] for item in self.chunk_buffer))
         await self.db_operations.delete_chunks_batch(urls_to_process)
 
-        # 批量插入新chunks
-        if all_data_to_insert:
-            await self.db_operations.insert_chunks(all_data_to_insert)
+        # 5. 批量插入新chunks
+        await self.db_operations.insert_chunks(all_data_to_insert)
 
-        logger.info(f"📊 Stored {len(urls_to_process)} URLs, {len(all_data_to_insert)} chunks")
+        # 6. 统计和清理
+        processing_time = time.perf_counter() - start_time
+        logger.info(f"📊 Unified batch completed: {len(urls_to_process)} URLs, "
+                   f"{len(all_data_to_insert)} chunks, {processing_time:.2f}s")
 
         # 清空缓冲池
-        self.result_buffer.clear()
+        self.chunk_buffer.clear()
 
 
 async def main():
     """Main function"""
-    async with StreamlineProcessor() as processor:
+    async with Processor() as processor:
         await processor.start_processing()
 
 
