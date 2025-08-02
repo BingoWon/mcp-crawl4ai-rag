@@ -36,11 +36,12 @@ body {
   color: #2c3e50;
 }
 
-.stats {
+.global-stats {
   display: flex;
   gap: 1.5rem;
-  font-size: 0.85rem;
-  color: #6c757d;
+  font-size: 0.9rem;
+  color: #495057;
+  font-weight: 500;
 }
 
 /* 主内容区 */
@@ -87,25 +88,9 @@ body {
   text-align: center;
 }
 
-.panel-stats {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
 
-.stat-item {
-  background: #007bff;
-  color: white;
-  padding: 0.25rem 0.6rem;
-  border-radius: 0.6rem;
-  font-size: 0.7rem;
-  font-weight: 500;
-  white-space: nowrap;
-}
 
-.stat-item.anomalous {
-  background: #dc3545;
-}
+
 
 .panel-content {
   flex: 1;
@@ -241,7 +226,7 @@ td:nth-last-child(2) {
     padding: 0.75rem 1rem;
   }
 
-  .stats {
+  .global-stats {
     gap: 1rem;
     font-size: 0.8rem;
   }

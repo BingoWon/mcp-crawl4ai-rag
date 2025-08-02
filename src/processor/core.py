@@ -36,7 +36,7 @@ class Processor:
     # 系统常量
     BUFFER_CHECK_INTERVAL = 1.0
     NO_CONTENT_SLEEP_INTERVAL = 3
-    MIN_CHUNK_LENGTH = 128
+    MIN_CHUNK_LENGTH = 64
 
     def __init__(self):
         # 三层参数设计：主参数 + 自动计算
@@ -196,6 +196,9 @@ class Processor:
             urls_to_process = list(set(item["url"] for item in valid_data))
             await self.db_operations.delete_chunks_batch(urls_to_process)
             await self.db_operations.insert_chunks(valid_data)
+
+            # 标记页面为已处理
+            await self.db_operations.mark_pages_processed(urls_to_process)
 
         # 统计和清理
         processing_time = time.perf_counter() - start_time

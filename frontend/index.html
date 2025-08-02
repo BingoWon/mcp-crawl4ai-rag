@@ -11,10 +11,10 @@
       <!-- 头部 -->
       <header class="header">
         <h1>Database Viewer</h1>
-        <div class="stats">
-          <span id="pages-count">Pages: 0</span>
-          <span id="chunks-count">Chunks: 0</span>
-          <span id="last-update">Last Update: --</span>
+        <div class="global-stats">
+          <span id="total-pages">总数: --</span>
+          <span id="content-pages">有内容: -- (--%)</span>
+          <span id="processed-pages">已处理: -- (--%)</span>
         </div>
       </header>
 
@@ -24,16 +24,6 @@
         <section class="panel left-panel">
           <div class="panel-header">
             <h2>Pages</h2>
-            <div class="panel-stats">
-              <div class="stat-item" id="pages-total-count">总数: 0</div>
-              <div class="stat-item" id="pages-content-count">
-                有内容: 0 (0%)
-              </div>
-              <div class="stat-item" id="pages-avg-crawl">平均爬取次数: 0</div>
-              <div class="stat-item" id="pages-avg-process">平均处理次数: 0</div>
-              <div class="stat-item" id="pages-avg-interval">爬取平均耗时: --</div>
-              <div class="stat-item anomalous" id="pages-anomalous">内容长度异常: 0</div>
-            </div>
           </div>
           <div class="panel-content">
             <div id="pages-error" class="error" style="display: none"></div>
@@ -43,10 +33,8 @@
                   <tr>
                     <th>URL</th>
                     <th>Content</th>
-                    <th>Crawl Count</th>
-                    <th>Process Count</th>
                     <th>Created</th>
-                    <th>Last Crawled</th>
+                    <th>Processed</th>
                   </tr>
                 </thead>
                 <tbody id="pages-tbody"></tbody>
@@ -63,7 +51,6 @@
         <section class="panel right-panel">
           <div class="panel-header">
             <h2>Chunks</h2>
-            <div class="panel-count" id="chunks-panel-count">0</div>
           </div>
           <div class="panel-content">
             <div id="chunks-error" class="error" style="display: none"></div>
@@ -74,7 +61,6 @@
                     <th>URL</th>
                     <th>Content</th>
                     <th>Embedding</th>
-                    <th>Created</th>
                   </tr>
                 </thead>
                 <tbody id="chunks-tbody"></tbody>

@@ -33,9 +33,9 @@ class APIConfig:
     PAGE_LIMIT = 100
     APPLE_DOC_PREFIX = "https://developer.apple.com/documentation"
 
-    # 有效的排序字段
-    VALID_PAGE_SORTS = {"id", "url", "crawl_count", "process_count", "created_at", "last_crawled_at"}
-    VALID_CHUNK_SORTS = {"id", "url", "created_at"}
+    # 有效的排序字段 - 彻底重构设计
+    VALID_PAGE_SORTS = {"id", "url", "created_at", "processed_at"}
+    VALID_CHUNK_SORTS = {"id", "url"}
 
 # 错误类型
 class APIErrorType(Enum):
@@ -105,67 +105,50 @@ async def get_db_client():
 @app.get("/api/pages")
 async def get_pages(
     search: str = Query("", description="搜索关键词"),
-    sort: str = Query("last_crawled_at", description="排序字段"),
+    sort: str = Query("created_at", description="排序字段"),
     order: str = Query("desc", description="排序方向")
 ) -> JSONResponse:
     """获取pages表数据 - 现代化安全查询"""
     try:
         client = await get_db_client()
 
-        # 参数验证和安全处理
-        sort_column = sort if sort in APIConfig.VALID_PAGE_SORTS else "last_crawled_at"
+        # 参数验证和安全处理 - 精简4字段设计
+        sort_column = sort if sort in APIConfig.VALID_PAGE_SORTS else "created_at"
         sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
-        # 简化查询 - 先获取页面数据
+        # 精简查询 - 只显示有content + 双重排序 + processed_at字段
         if search:
             query = f"""
-                SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
+                SELECT id, url, content, created_at, processed_at
                 FROM pages
-                WHERE last_crawled_at IS NOT NULL
+                WHERE content IS NOT NULL AND content != ''
                 AND (url ILIKE $1 OR content ILIKE $1)
-                ORDER BY {sort_column} {sort_order}
+                ORDER BY {sort_column} {sort_order}, url ASC
                 LIMIT $2
             """
             pages = await client.fetch_all(query, f"%{search}%", APIConfig.PAGE_LIMIT)
         else:
             query = f"""
-                SELECT id, url, content, crawl_count, process_count, created_at, last_crawled_at
+                SELECT id, url, content, created_at, processed_at
                 FROM pages
-                WHERE last_crawled_at IS NOT NULL
-                ORDER BY {sort_column} {sort_order}
+                WHERE content IS NOT NULL AND content != ''
+                ORDER BY {sort_column} {sort_order}, url ASC
                 LIMIT $1
             """
             pages = await client.fetch_all(query, APIConfig.PAGE_LIMIT)
 
-        # 简化的平均间隔计算
-        avg_crawl_interval = None
-        crawled_pages = [p for p in pages if p["crawl_count"] > 0]
-        if len(crawled_pages) >= 2:
-            # 简单计算：取前后时间差的平均值
-            try:
-                intervals = []
-                sorted_pages = sorted(crawled_pages, key=lambda x: x["last_crawled_at"])
-                for i in range(1, len(sorted_pages)):
-                    prev_time = sorted_pages[i-1]["last_crawled_at"]
-                    curr_time = sorted_pages[i]["last_crawled_at"]
-                    if prev_time and curr_time:
-                        interval = (curr_time - prev_time).total_seconds()
-                        intervals.append(interval)
-                if intervals:
-                    avg_crawl_interval = sum(intervals) / len(intervals)
-            except Exception:
-                avg_crawl_interval = None
 
-        # 格式化数据 - 现代化数据处理
+
+        # 格式化数据 - 精简4字段设计
         formatted_pages = []
-        crawled_count = 0
+        content_count = 0
 
         for page in pages:
-            if page["crawl_count"] > 0:
-                crawled_count += 1
+            content = page.get("content", "") or ""
+            if content.strip():
+                content_count += 1
 
             # 安全的内容截取
-            content = page.get("content", "") or ""
             display_content = content[:100] + "..." if len(content) > 100 else content
 
             formatted_pages.append({
@@ -174,10 +157,8 @@ async def get_pages(
                 "full_url": page["url"],
                 "content": display_content,
                 "full_content": content,
-                "crawl_count": page["crawl_count"],
-                "process_count": page["process_count"],
                 "created_at": page["created_at"],
-                "last_crawled_at": page["last_crawled_at"]
+                "processed_at": page["processed_at"]
             })
 
         return JSONResponse({
@@ -185,8 +166,7 @@ async def get_pages(
             "data": formatted_pages,
             "count": len(formatted_pages),
             "stats": {
-                "avg_crawl_interval": f"{avg_crawl_interval:.3f}" if avg_crawl_interval else None,
-                "data_count": crawled_count
+                "content_count": content_count
             }
         })
 
@@ -200,8 +180,8 @@ async def get_chunks(
     size: int = Query(50, ge=1, le=100, description="每页大小"),
     search: str = Query("", description="搜索关键词"),
     page_id: str = Query("", description="页面ID过滤"),
-    sort: str = Query("created_at", description="排序字段"),
-    order: str = Query("desc", description="排序方向")
+    sort: str = Query("url", description="排序字段"),
+    order: str = Query("asc", description="排序方向")
 ) -> JSONResponse:
     """获取chunks表数据 - 现代化分页查询"""
     try:
@@ -237,9 +217,9 @@ async def get_chunks(
         limit_param = len(params) + 1
         offset_param = len(params) + 2
         query = f"""
-            SELECT id, url, content, created_at, embedding
+            SELECT id, url, content, embedding
             FROM chunks {where_clause}
-            ORDER BY {sort_column} {sort_order}
+            ORDER BY {sort_column} {sort_order}, url ASC
             LIMIT ${limit_param} OFFSET ${offset_param}
         """
         params.extend([size, offset])
@@ -268,7 +248,6 @@ async def get_chunks(
                 "full_url": chunk["url"],
                 "content": display_content,
                 "full_content": content,
-                "created_at": chunk["created_at"],
                 "embedding_info": embedding_info,
                 "raw_embedding": str(chunk["embedding"]) if chunk.get("embedding") else None
             })
@@ -294,58 +273,63 @@ async def get_stats() -> JSONResponse:
     try:
         client = await get_db_client()
 
-        # 优化的单查询统计 - 高性能统计
+        # 精简统计查询 - 添加processed_at统计
         result = await client.fetch_one("""
             WITH page_stats AS (
                 SELECT
                     COUNT(*) as total_pages,
                     COUNT(CASE WHEN content IS NOT NULL AND content != '' THEN 1 END) as pages_with_content,
-                    AVG(crawl_count) as avg_crawl_count,
-                    AVG(CASE WHEN content IS NOT NULL AND content != '' THEN process_count END) as avg_process_count,
-                    COUNT(CASE WHEN crawl_count > 0 AND LENGTH(content) < 10 THEN 1 END) as anomalous_pages
+                    COUNT(CASE WHEN processed_at IS NOT NULL THEN 1 END) as pages_processed,
+                    COUNT(CASE WHEN processed_at IS NULL AND content IS NOT NULL AND content != '' THEN 1 END) as pages_unprocessed
                 FROM pages
             ),
             chunk_stats AS (
-                SELECT COUNT(*) as total_chunks FROM chunks
+                SELECT
+                    COUNT(*) as total_chunks,
+                    COUNT(DISTINCT url) as unique_chunk_urls
+                FROM chunks
             )
             SELECT
                 p.total_pages,
                 c.total_chunks,
+                c.unique_chunk_urls,
                 p.pages_with_content,
+                p.pages_processed,
+                p.pages_unprocessed,
                 ROUND((p.pages_with_content::float / NULLIF(p.total_pages, 0) * 100)::numeric, 2) as content_percentage,
-                ROUND(p.avg_crawl_count::numeric, 4) as avg_crawl_count,
-                ROUND(p.avg_process_count::numeric, 4) as avg_process_count,
-                p.anomalous_pages
+                ROUND((p.pages_processed::float / NULLIF(p.pages_with_content, 0) * 100)::numeric, 2) as processing_percentage
             FROM page_stats p, chunk_stats c
         """)
 
-        # 安全的数据转换
+        # 精简数据转换 - 添加处理状态统计
         return JSONResponse({
             "success": True,
             "data": {
                 "pages_count": result.get("total_pages", 0),
                 "chunks_count": result.get("total_chunks", 0),
+                "unique_chunk_urls": result.get("unique_chunk_urls", 0),
                 "pages_with_content": result.get("pages_with_content", 0),
+                "pages_processed": result.get("pages_processed", 0),
+                "pages_unprocessed": result.get("pages_unprocessed", 0),
                 "content_percentage": f"{safe_float(result.get('content_percentage', 0)):.2f}",
-                "avg_crawl_count": safe_float(result.get("avg_crawl_count", 0)),
-                "avg_process_count": safe_float(result.get("avg_process_count", 0)),
-                "anomalous_pages": result.get("anomalous_pages", 0)
+                "processing_percentage": f"{safe_float(result.get('processing_percentage', 0)):.2f}"
             }
         })
 
     except Exception:
-        # 安全的错误响应
+        # 精简错误响应 - 添加处理状态字段
         return JSONResponse({
             "success": False,
             "error": APIErrorType.DATABASE_ERROR.value,
             "data": {
                 "pages_count": 0,
                 "chunks_count": 0,
+                "unique_chunk_urls": 0,
                 "pages_with_content": 0,
+                "pages_processed": 0,
+                "pages_unprocessed": 0,
                 "content_percentage": "0.00",
-                "avg_crawl_count": 0.0,
-                "avg_process_count": 0.0,
-                "anomalous_pages": 0
+                "processing_percentage": "0.00"
             }
         }, status_code=500)
 

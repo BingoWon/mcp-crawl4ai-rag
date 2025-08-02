@@ -26,13 +26,12 @@ class DatabaseViewer {
 
   async loadData() {
     await Promise.all([this.loadPages(), this.loadChunks(), this.loadStats()]);
-    this.updateLastUpdateTime();
   }
 
   async loadPages() {
     try {
       const response = await fetch(
-        `${this.apiBase}/pages?sort=last_crawled_at&order=desc`
+        `${this.apiBase}/pages?sort=created_at&order=desc`
       );
       const result = await response.json();
 
@@ -53,10 +52,7 @@ class DatabaseViewer {
           }
         }
 
-        // 更新页面级统计信息
-        if (result.stats) {
-          this.updatePageStats(result.stats);
-        }
+
 
         // 无需分页UI - 固定显示100条数据
       } else {
@@ -113,17 +109,10 @@ class DatabaseViewer {
       if (result.success) {
         // 智能刷新：只有统计数据变化时才更新
         if (!this.isDataEqual(this.lastData.stats, result.data)) {
-          document.getElementById(
-            "pages-count"
-          ).textContent = `Pages: ${result.data.pages_count}`;
-          document.getElementById(
-            "chunks-count"
-          ).textContent = `Chunks: ${result.data.chunks_count}`;
           this.lastData.stats = result.data;
 
-          // 更新panel count显示
-          this.updatePanelCount("pages", result.data.pages_count);
-          this.updatePanelCount("chunks", result.data.chunks_count);
+          // 更新全局统计显示
+          this.updateGlobalStats(result.data);
         }
       }
     } catch (error) {
@@ -178,52 +167,16 @@ class DatabaseViewer {
     document.getElementById(`${type}-empty`).style.display = "flex";
   }
 
-  updatePanelCount(type, count, data = null) {
-    if (type === "pages" && this.lastData.stats) {
-      // 分别更新三个独立的统计区域
-      const stats = this.lastData.stats;
-      document.getElementById(
-        "pages-total-count"
-      ).textContent = `总数: ${count}`;
-      document.getElementById(
-        "pages-content-count"
-      ).textContent = `有内容: ${stats.pages_with_content} (${stats.content_percentage}%)`;
-      document.getElementById(
-        "pages-avg-crawl"
-      ).textContent = `平均爬取次数: ${stats.avg_crawl_count}`;
-      document.getElementById(
-        "pages-avg-process"
-      ).textContent = `平均处理次数: ${stats.avg_process_count}`;
-      document.getElementById(
-        "pages-anomalous"
-      ).textContent = `内容长度异常: ${stats.anomalous_pages}`;
-    } else if (type === "chunks") {
-      // chunks保持原有显示方式
-      const panelCountElement = document.getElementById(`${type}-panel-count`);
-      if (panelCountElement) {
-        panelCountElement.textContent = count;
-      }
-    }
+  updateGlobalStats(stats) {
+    // 更新页面顶部的全局统计
+    document.getElementById("total-pages").textContent = `总数: ${stats.pages_count}`;
+    document.getElementById("content-pages").textContent = `有内容: ${stats.pages_with_content} (${stats.content_percentage}%)`;
+    document.getElementById("processed-pages").textContent = `已处理: ${stats.pages_processed} (${stats.processing_percentage}%)`;
   }
 
-  updatePageStats(stats) {
-    // 更新页面级统计信息 - 优雅现代精简
-    const dataCount = stats.data_count || 0;
-    const avgInterval = stats.avg_crawl_interval;
 
-    const intervalText = avgInterval !== null ? `${avgInterval}秒` : "--";
 
-    document.getElementById(
-      "pages-avg-interval"
-    ).textContent = `近${dataCount}次爬取平均耗时: ${intervalText}`;
-  }
 
-  updateLastUpdateTime() {
-    const now = new Date();
-    document.getElementById(
-      "last-update"
-    ).textContent = `Last Update: ${now.toLocaleTimeString()}`;
-  }
 
   formatDate(dateString) {
     if (!dateString) return "--";
@@ -256,6 +209,10 @@ class DatabaseViewer {
   }
 
   createPageRow(page) {
+    const processedStatus = page.processed_at
+      ? `<span style="color: #28a745;">✓ ${this.formatDate(page.processed_at)}</span>`
+      : `<span style="color: #6c757d;">未处理</span>`;
+
     return `
       <tr>
         <td class="url-cell" title="${page.full_url || page.url}"
@@ -263,10 +220,8 @@ class DatabaseViewer {
       page.full_url || page.url
     )}', '${this.escapeJsString(page.full_content)}', 'page')">${page.url}</td>
         <td class="content-cell" title="${page.content}">${page.content}</td>
-        <td><span class="crawl-count">${page.crawl_count}</span></td>
-        <td><span class="process-count">${page.process_count}</span></td>
         <td>${this.formatDate(page.created_at)}</td>
-        <td>${this.formatDate(page.last_crawled_at)}</td>
+        <td>${processedStatus}</td>
       </tr>
     `;
   }
@@ -284,7 +239,6 @@ class DatabaseViewer {
     )}', '${this.escapeJsString(chunk.raw_embedding)}')">${chunk.url}</td>
         <td class="content-cell" title="${chunk.content}">${chunk.content}</td>
         <td class="embedding-info">${chunk.embedding_info}</td>
-        <td>${this.formatDate(chunk.created_at)}</td>
       </tr>
     `;
   }
@@ -385,7 +339,7 @@ let dbViewer;
 
 // 模态框相关函数
 function showContentModal(
-  id,
+  _id,
   url,
   content,
   type,

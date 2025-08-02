@@ -42,7 +42,7 @@ async def main():
         async with Crawler() as crawler, Processor() as processor:
             await asyncio.gather(
                 crawler.start_crawling(TARGET_URL),
-                processor.start_processing()
+                # processor.start_processing()
             )
     except KeyboardInterrupt:
         logger.info("Unified system interrupted by user")
