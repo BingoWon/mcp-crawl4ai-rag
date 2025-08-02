@@ -1,24 +1,18 @@
 """
-Database Client - Simple PostgreSQL Interface
+Database Client - 纯粹的PostgreSQL连接管理
 
-This module provides a simple async PostgreSQL database client for the Apple RAG system.
+提供纯粹的数据库连接和基础操作，不包含业务逻辑。
 
-Features:
-- Async connection pool for high performance
-- pgvector extension support for vector similarity search
-- JSON-serializable result formatting
-- Comprehensive error handling and logging
+职责：
+- 连接池管理
+- 数据库初始化
+- 基础CRUD操作
+- 结果序列化
 
-Database Schema Support:
-- pages: Full page content with metadata (id, url, content, crawl_count)
-- chunks: Document fragments with embeddings (id, url, content, embedding)
-- pgvector: Vector similarity operations with cosine distance
-
-Performance:
-- Connection pooling for efficiency
-- Async-first design for concurrency
-- Efficient vector operations
-- Automatic serialization of UUID and datetime objects
+不包含：
+- 业务逻辑
+- 复杂查询
+- 批处理策略
 """
 
 import asyncpg
@@ -168,76 +162,7 @@ class DatabaseClient:
         async with self.pool.acquire() as conn:
             return await conn.fetchval(query, *args)
 
-    async def insert_page(self, url: str) -> bool:
-        """Insert URL if not exists. Returns True if inserted."""
-        try:
-            result = await self.execute_command(
-                "INSERT INTO pages (url, crawl_count, content, last_crawled_at) VALUES ($1, 0, '', NULL) ON CONFLICT (url) DO NOTHING",
-                url
-            )
-            return "INSERT 0 1" in result
-        except Exception:
-            return False
 
-    async def get_pages_batch(self, batch_size: int = 5) -> List[str]:
-        """Get batch of URLs for crawling with atomic operations"""
-        lock_id = 12345
-
-        async with self.pool.acquire() as conn:
-            await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
-
-            try:
-                results = await conn.fetch("""
-                    UPDATE pages
-                    SET crawl_count = crawl_count + 1,
-                        last_crawled_at = NOW()
-                    WHERE url IN (
-                        SELECT url FROM pages
-                        ORDER BY crawl_count ASC, last_crawled_at ASC NULLS FIRST
-                        LIMIT $1
-                        FOR UPDATE SKIP LOCKED
-                    )
-                    RETURNING url
-                """, batch_size)
-
-                return [row['url'] for row in results]
-
-            finally:
-                await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
-
-    async def get_process_urls_batch(self, batch_size: int = 5) -> List[Tuple[str, str]]:
-        """Get batch of URLs and content for processing with atomic operations"""
-        async with self.pool.acquire() as conn:
-            results = await conn.fetch("""
-                SELECT url, content
-                FROM pages
-                WHERE content != '' AND content IS NOT NULL
-                ORDER BY last_crawled_at DESC
-                LIMIT $1
-            """, batch_size)
-
-            return [(row['url'], row['content']) for row in results]
-
-    async def update_pages_batch(self, updates: List[Tuple[str, str]]) -> None:
-        """Update pages content in batch"""
-        if not updates:
-            return
-
-        await self.execute_many(
-            "UPDATE pages SET content = $2, updated_at = NOW() WHERE url = $1",
-            updates
-        )
-
-    async def insert_chunks(self, data: List[Dict[str, Any]]) -> None:
-        """Insert chunks data in batch"""
-        if not data:
-            return
-
-        values = [(item['url'], item['content'], item.get('embedding')) for item in data]
-        await self.execute_many(
-            "INSERT INTO chunks (url, content, embedding) VALUES ($1, $2, $3)",
-            values
-        )
 
 
 def create_database_client(config: Optional[DatabaseConfig] = None) -> DatabaseClient:

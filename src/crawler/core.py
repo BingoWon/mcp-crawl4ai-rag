@@ -71,8 +71,8 @@ from urllib.parse import urlparse, urlunparse
 logger = setup_logger(__name__)
 
 
-class BatchCrawler:
-    """Worker Pool爬虫系统 - 优雅现代精简"""
+class Crawler:
+    """Worker Pool爬虫系统"""
 
     # 常量定义 - 消除魔法数字
     APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
@@ -222,7 +222,7 @@ class BatchCrawler:
             try:
                 if self.url_queue.qsize() < self.max_workers:
                     # URL不足，批量获取补充
-                    batch_urls = await self.db_operations.get_pages_batch(
+                    batch_urls = await self.db_operations.get_urls_batch(
                         self.crawl_batch_size
                     )
 

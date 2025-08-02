@@ -1,8 +1,7 @@
 """
-Embedding Core - Unified Embedding Interface
+Embedding Core - Embedding接口
 
-This module provides a process-safe, unified embedding interface supporting both
-local and API-based embedding generation for the MCP RAG server.
+提供进程安全的embedding接口，支持本地和API两种模式。
 
 Features:
 - Qwen3-Embedding-4B local model with Apple Silicon MPS optimization
