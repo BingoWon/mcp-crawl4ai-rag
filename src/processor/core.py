@@ -1,22 +1,16 @@
 """
-Processor - 跨URL批量Embedding处理器
+Processor - 智能批量Embedding处理器
 
-实现跨URL chunks收集和批量处理。
+三层参数设计 + 动态API限制处理
 
-核心机制：
-- 跨URL收集chunks到chunk_buffer
-- 达到阈值时批量处理
-- API模式：真正的批量embedding (单次API调用)
-- 本地模式：逐个embedding处理
-- 批量storage (删除+插入)
+核心特性：
+- 三个独立并发进程：内容供应、块处理、批管理
+- 动态二分法：自适应API限制，单chunk过大时跳过
+- 智能流量控制：buffer限制防止内存溢出
+- 批量存储：删除+插入优化
 
 环境变量：
-- PROCESSOR_CONTENT_FETCH_SIZE: 内容获取批次 (默认50)
-- PROCESSOR_CHUNK_BATCH_SIZE: chunks批处理阈值 (默认50)
-
-使用方式：
-    async with Processor() as processor:
-        await processor.start_processing()
+- PROCESSOR_CONTENT_FETCH_SIZE: 主参数，其他自动计算 (默认50)
 """
 
 import sys
@@ -178,48 +172,85 @@ class Processor:
                 await asyncio.sleep(self.NO_CONTENT_SLEEP_INTERVAL)
 
     async def _execute_unified_batch(self) -> None:
-        """执行统一批处理：embedding + storage 一体化"""
+        """执行统一批处理：动态二分法处理API限制"""
         if not self.chunk_buffer:
             return
 
         start_time = time.perf_counter()
 
-        # 1. 提取所有chunks文本
-        chunk_texts = [item["content"] for item in self.chunk_buffer]
+        # 动态二分法处理所有chunks
+        all_embeddings = await self._adaptive_embedding_batch(self.chunk_buffer)
 
-        # 2. 批量embedding处理 - 真正的跨URL批处理
-        embedder = get_embedder()
-        if isinstance(embedder, SiliconFlowProvider):
-            embeddings = await embedder.encode_batch_concurrent(chunk_texts)
-            logger.info(f"✅ True batch embedding: {len(chunk_texts)} chunks in single API call")
-        else:
-            embeddings = [create_embedding(chunk) for chunk in chunk_texts]
-            logger.info(f"✅ Local embedding: {len(chunk_texts)} chunks processed")
+        # 准备存储数据（跳过失败的chunks）
+        valid_data = []
+        for i, embedding in enumerate(all_embeddings):
+            if embedding is not None:  # 成功的embedding
+                valid_data.append({
+                    "url": self.chunk_buffer[i]["url"],
+                    "content": self.chunk_buffer[i]["content"],
+                    "embedding": str(embedding)
+                })
 
-        # 3. 准备批量存储数据
-        all_data_to_insert = [
-            {
-                "url": self.chunk_buffer[i]["url"],
-                "content": self.chunk_buffer[i]["content"],
-                "embedding": str(embeddings[i])
-            }
-            for i in range(len(self.chunk_buffer))
-        ]
+        if valid_data:
+            # 批量删除和插入
+            urls_to_process = list(set(item["url"] for item in valid_data))
+            await self.db_operations.delete_chunks_batch(urls_to_process)
+            await self.db_operations.insert_chunks(valid_data)
 
-        # 4. 获取涉及的URLs并批量删除旧chunks
-        urls_to_process = list(set(item["url"] for item in self.chunk_buffer))
-        await self.db_operations.delete_chunks_batch(urls_to_process)
-
-        # 5. 批量插入新chunks
-        await self.db_operations.insert_chunks(all_data_to_insert)
-
-        # 6. 统计和清理
+        # 统计和清理
         processing_time = time.perf_counter() - start_time
-        logger.info(f"📊 Unified batch completed: {len(urls_to_process)} URLs, "
-                   f"{len(all_data_to_insert)} chunks, {processing_time:.2f}s")
+        skipped_count = len(self.chunk_buffer) - len(valid_data)
+        logger.info(f"📊 Batch completed: {len(valid_data)} processed, {skipped_count} skipped, {processing_time:.2f}s")
 
-        # 清空缓冲池
         self.chunk_buffer.clear()
+
+    async def _adaptive_embedding_batch(self, chunk_items: List[Dict[str, Any]]) -> List[Any]:
+        """动态二分法批量embedding - 自适应API限制"""
+        if not chunk_items:
+            return []
+
+        embedder = get_embedder()
+        if not isinstance(embedder, SiliconFlowProvider):
+            # 本地embedding，逐个处理
+            return [create_embedding(item["content"]) for item in chunk_items]
+
+        # API embedding，使用动态二分法
+        return await self._binary_split_embedding(embedder, chunk_items)
+
+    async def _binary_split_embedding(self, embedder, chunk_items: List[Dict[str, Any]], depth: int = 0) -> List[Any]:
+        """递归二分法处理API限制"""
+        if depth > 10:  # 防止无限递归
+            logger.error(f"Max recursion depth reached, skipping {len(chunk_items)} chunks")
+            return [None] * len(chunk_items)
+
+        chunk_texts = [item["content"] for item in chunk_items]
+
+        try:
+            # 尝试批量处理
+            embeddings = await embedder.encode_batch_concurrent(chunk_texts)
+            logger.info(f"✅ Batch embedding: {len(chunk_texts)} chunks")
+            return embeddings
+
+        except Exception as e:
+            if "413" in str(e) or "Request Entity Too Large" in str(e):
+                # API请求过大，进行二分
+                if len(chunk_items) == 1:
+                    # 单个chunk都太大，跳过
+                    logger.warning(f"Single chunk too large, skipping: {len(chunk_texts[0])} chars")
+                    return [None]
+
+                # 二分处理
+                mid = len(chunk_items) // 2
+                logger.info(f"API limit hit, splitting {len(chunk_items)} chunks into {mid} + {len(chunk_items) - mid}")
+
+                left_embeddings = await self._binary_split_embedding(embedder, chunk_items[:mid], depth + 1)
+                right_embeddings = await self._binary_split_embedding(embedder, chunk_items[mid:], depth + 1)
+
+                return left_embeddings + right_embeddings
+            else:
+                # 其他错误，跳过所有chunks
+                logger.error(f"Embedding error: {e}, skipping {len(chunk_items)} chunks")
+                return [None] * len(chunk_items)
 
 
 async def main():
