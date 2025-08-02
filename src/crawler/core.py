@@ -76,6 +76,7 @@ class Crawler:
 
     # 常量定义 - 消除魔法数字
     APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
+    NOT_FOUND_MESSAGE = "The page you're looking for can't be found."
 
     # 业务超参数 - 核心配置
     CRAWL_BATCH_SIZE = 10         # 爬取批次大小，唯一的环境变量业务超参数
@@ -276,17 +277,23 @@ class Crawler:
                 self.url_queue.task_done()  # 即使出错也要标记完成
 
     async def _crawl_single_url(self, url: str) -> Dict[str, Any]:
-        """爬取单个URL - 优雅现代精简"""
+        """爬取单个URL - 404检测优化"""
         try:
             # 内容爬取（始终执行）
             content, links_data = await self.crawler_pool.crawl_page(url, "#app-main")
 
             discovered_links = []
+            is_404 = False
 
             # 链接爬取（根据配置决定）
             if self.dual_crawl_enabled:
-                # 双重爬取模式：专门的链接爬取
-                _, links_data = await self.crawler_pool.crawl_page(url)
+                # 双重爬取模式：完整页面爬取用于链接提取和404检测
+                full_content, links_data = await self.crawler_pool.crawl_page(url)
+
+                # 404检测：检查完整页面内容
+                if full_content and self.NOT_FOUND_MESSAGE in full_content:
+                    is_404 = True
+
                 if links_data:
                     discovered_links = self._extract_links_from_data(links_data)
             else:
@@ -297,7 +304,8 @@ class Crawler:
             return {
                 "url": url,
                 "content": content or "",
-                "discovered_links": discovered_links
+                "discovered_links": discovered_links,
+                "is_404": is_404
             }
 
         except Exception as e:
@@ -305,7 +313,8 @@ class Crawler:
             return {
                 "url": url,
                 "content": "",
-                "discovered_links": []
+                "discovered_links": [],
+                "is_404": False
             }
 
     async def _add_to_storage_buffer(self, result: Dict[str, Any]) -> None:
@@ -343,7 +352,7 @@ class Crawler:
                 logger.error(f"Storage Manager error: {e}")
 
     async def _flush_storage_buffer(self) -> None:
-        """清空存储缓冲 - 批量存储所有结果"""
+        """清空存储缓冲 - 404检测优化"""
         # 获取缓冲数据并清空
         buffer_data = []
         async with self.storage_lock:
@@ -352,32 +361,37 @@ class Crawler:
             buffer_data = self.storage_buffer.copy()
             self.storage_buffer.clear()
 
-        # 分离数据
-        url_content_pairs, all_discovered_links = self._separate_buffer_data(buffer_data)
+        # 分离有效数据和404数据
+        url_content_pairs, all_discovered_links, invalid_urls = self._separate_buffer_data(buffer_data)
 
-        # 批量存储
-        await self._store_pages_and_links(url_content_pairs, all_discovered_links)
+        # 存储有效数据
+        if url_content_pairs:
+            await self._store_pages_and_links(url_content_pairs, all_discovered_links)
 
-    def _separate_buffer_data(self, buffer_data: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, str]], List[str]]:
-        """分离缓冲数据为页面内容和链接"""
-        url_content_pairs = [(result["url"], result["content"]) for result in buffer_data]
-        all_discovered_links = []
+        # 删除404 URL
+        if invalid_urls:
+            deleted_count = await self.db_operations.delete_pages_batch(invalid_urls)
+            logger.warning(f"🗑️ Deleted {deleted_count} invalid URLs (404 pages)")
 
-        for result in buffer_data:
-            all_discovered_links.extend(result["discovered_links"])
+    def _separate_buffer_data(self, buffer_data: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, str]], List[str], List[str]]:
+        """分离缓冲数据 - 优雅现代精简"""
+        # 分离有效结果和404结果
+        valid_results = [r for r in buffer_data if not r.get("is_404", False)]
+        invalid_urls = [r["url"] for r in buffer_data if r.get("is_404", False)]
 
-        return url_content_pairs, all_discovered_links
+        # 提取有效数据
+        url_content_pairs = [(r["url"], r["content"]) for r in valid_results]
+        all_discovered_links = [link for r in valid_results for link in r["discovered_links"]]
+
+        return url_content_pairs, all_discovered_links, invalid_urls
 
     async def _store_pages_and_links(self, url_content_pairs: List[Tuple[str, str]],
                                    all_discovered_links: List[str]) -> None:
-        """批量存储页面和链接 - 404清理优化"""
-        # 批量更新页面内容，包含404检测和清理
+        """批量存储页面和链接 - 优雅现代精简"""
+        # 批量更新页面内容
         if url_content_pairs:
-            valid_count, empty_count, deleted_count = await self.db_operations.update_pages_batch(url_content_pairs)
+            valid_count, empty_count = await self.db_operations.update_pages_batch(url_content_pairs)
             logger.info(f"📊 Stored {len(url_content_pairs)} pages: {valid_count} valid, {empty_count} empty")
-
-            if deleted_count > 0:
-                logger.warning(f"🗑️ Deleted {deleted_count} invalid URLs (404 pages)")
 
         # 存储发现的链接
         if all_discovered_links:
