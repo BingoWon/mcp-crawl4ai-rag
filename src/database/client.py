@@ -70,14 +70,20 @@ class DatabaseClient:
             await self._setup_database()
             self._initialized = True
 
-            from utils.logger import setup_logger
-            logger = setup_logger(__name__)
-            logger.info(f"✅ Database client initialized (cloud): {self.config.host}:{self.config.port}/{self.config.database}")
+            try:
+                from utils.logger import setup_logger
+                logger = setup_logger(__name__)
+                logger.info(f"✅ Database client initialized (cloud): {self.config.host}:{self.config.port}/{self.config.database}")
+            except ImportError:
+                print(f"✅ Database client initialized (cloud): {self.config.host}:{self.config.port}/{self.config.database}")
 
         except Exception as e:
-            from utils.logger import setup_logger
-            logger = setup_logger(__name__)
-            logger.error(f"❌ Failed to initialize database client: {e}")
+            try:
+                from utils.logger import setup_logger
+                logger = setup_logger(__name__)
+                logger.error(f"❌ Failed to initialize database client: {e}")
+            except ImportError:
+                print(f"❌ Failed to initialize database client: {e}")
             raise
 
     async def close(self) -> None:
@@ -101,33 +107,30 @@ class DatabaseClient:
             # Enable pgvector extension
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-            # Create pages table
+            # Create pages table - 添加processed_at字段
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS pages (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     url TEXT UNIQUE NOT NULL,
                     content TEXT DEFAULT '',
-                    crawl_count INTEGER DEFAULT 0,
-                    last_crawled_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT NOW(),
-                    updated_at TIMESTAMP DEFAULT NOW()
+                    processed_at TIMESTAMP DEFAULT NULL
                 )
             """)
 
-            # Create chunks table
+            # Create chunks table - 移除created_at字段
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS chunks (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     url TEXT NOT NULL,
                     content TEXT NOT NULL,
-                    embedding vector(2560),
-                    created_at TIMESTAMP DEFAULT NOW()
+                    embedding vector(2560)
                 )
             """)
 
-            # Create indexes
+            # Create indexes - 优化处理器查询
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url)")
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_crawl_count ON pages(crawl_count)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_processing ON pages(processed_at, created_at DESC) WHERE processed_at IS NULL")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_url ON chunks(url)")
 
     async def execute_query(self, query: str, *args) -> List[Dict[str, Any]]:

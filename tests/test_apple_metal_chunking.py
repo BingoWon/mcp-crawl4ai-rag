@@ -16,14 +16,14 @@ load_dotenv()
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from crawler.core import BatchCrawler
+from crawler.core import Crawler
 from chunking import SmartChunker
 
 
 async def test_apple_metal_chunking():
     """测试 Apple Metal 文档的 chunking"""
     # url = "https://developer.apple.com/documentation/SampleCode"
-    url = "https://developer.apple.com/documentation/Xcode/build-settings-reference"
+    url = "https://developer.apple.com/documentation/coreservices/1484577-anonymous/langkirghiz"
     
     print(f"🚀 开始测试 Apple Metal 文档 chunking")
     print(f"URL: {url}")
@@ -32,7 +32,7 @@ async def test_apple_metal_chunking():
     try:
         # 初始化组件
         print("📦 初始化组件...")
-        crawler = BatchCrawler()
+        crawler = Crawler()
         chunker = SmartChunker()
         
         # 爬取页面
