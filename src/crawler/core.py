@@ -413,8 +413,6 @@ class Crawler:
             if new_count > 0:
                 logger.info(f"Added {new_count} new URLs to crawl queue")
 
-
-
     def _extract_links_from_data(self, links_data: Optional[Dict[str, Any]]) -> List[str]:
         """Extract all internal links from crawl results"""
         if not links_data or not links_data.get("internal"):
@@ -426,5 +424,3 @@ class Crawler:
             extracted_links.append(link["href"])
 
         return list(set(extracted_links))  # Remove duplicates
-
-
