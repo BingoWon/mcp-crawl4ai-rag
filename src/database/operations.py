@@ -82,23 +82,14 @@ class DatabaseOperations:
                 # 释放advisory lock
                 await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
-    async def update_pages_batch(self, url_content_pairs: List[Tuple[str, str]]) -> Tuple[int, int, int]:
-        """批量更新页面内容 - 404检测与清理"""
+    async def update_pages_batch(self, url_content_pairs: List[Tuple[str, str]]) -> Tuple[int, int]:
+        """批量更新页面内容 - 优雅现代精简"""
         if not url_content_pairs:
-            return 0, 0, 0
+            return 0, 0
 
-        # 三重分离：有效内容、失败内容、无效URL
-        valid_content_pairs = []
-        failed_urls = []
-        invalid_urls = []
-
-        for url, content in url_content_pairs:
-            if not content.strip():
-                failed_urls.append(url)
-            elif "The page you're looking for can't be found." in content:
-                invalid_urls.append(url)
-            else:
-                valid_content_pairs.append((url, content))
+        # 分离有效内容和失败内容
+        valid_content_pairs = [(url, content) for url, content in url_content_pairs if content.strip()]
+        failed_urls = [url for url, content in url_content_pairs if not content.strip()]
 
         # 更新有效内容
         if valid_content_pairs:
@@ -112,12 +103,7 @@ class DatabaseOperations:
                 UPDATE pages SET content = '' WHERE url = $1
             """, [(url,) for url in failed_urls])
 
-        # 删除无效URL及其chunks
-        deleted_count = 0
-        if invalid_urls:
-            deleted_count = await self.delete_pages_batch(invalid_urls)
-
-        return len(valid_content_pairs), len(failed_urls), deleted_count
+        return len(valid_content_pairs), len(failed_urls)
 
     async def delete_pages_batch(self, urls: List[str]) -> int:
         """批量删除无效页面及其chunks - 优雅现代精简"""
