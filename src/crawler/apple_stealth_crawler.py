@@ -279,7 +279,7 @@ class CrawlerPool:
 
                 await self.return_crawler(crawler)
                 logger.info(f"Content and links extracted from: {url}")
-                return content, result.links
+                return content, result.links, getattr(result, 'status_code', None)
 
             except Exception as e:
                 error_msg = str(e)

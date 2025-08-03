@@ -73,8 +73,12 @@ class Crawler:
 
     # 常量定义 - 消除魔法数字
     APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
-    ERROR_MESSAGES = [
-        "The page you're looking for can't be found.",
+
+    # 永久错误状态码 - 立即删除
+    PERMANENT_ERROR_CODES = [403, 404, 410]
+
+    # HTTP 200状态码的错误检测模式
+    HTTP_200_ERROR_PATTERNS = [
         "An unknown error occurred."
     ]
 
@@ -183,9 +187,22 @@ class Crawler:
 
         return valid_urls
 
-    def is_error_page(self, content: str) -> bool:
-        """检测页面是否为错误页面 - 全局最优解"""
-        return any(error_msg in content for error_msg in self.ERROR_MESSAGES)
+    def is_error_page(self, content: str, status_code: int = None) -> bool:
+        """精确错误检测 - 永久错误删除，临时错误保留重试"""
+        if not status_code:
+            return False
+
+        # 永久错误 - 立即删除
+        if status_code in self.PERMANENT_ERROR_CODES:
+            return True
+
+        # HTTP 200 内容错误检测
+        if status_code == 200 and content:
+            # Apple特有错误模式
+            return any(pattern in content for pattern in self.HTTP_200_ERROR_PATTERNS)
+
+        # 其他情况保留重试 (包括200+空内容、临时错误等)
+        return False
 
     async def start_crawling(self, start_url: str) -> None:
         """启动Worker Pool爬虫 - 全局最优解"""
@@ -295,19 +312,18 @@ class Crawler:
             # 内容爬取（始终执行）
             # “#app-main” 是 https://developer.apple.com/documentation/ 这类网站的通用选择器
             # “.main” 是有时候会自动跳转到的 https://www.swift.org/documentation/ 这类网站的通用选择器
-            content, links_data = await self.crawler_pool.crawl_page(url, "#app-main, .main")
+            content, links_data, status_code = await self.crawler_pool.crawl_page(url, "#app-main, .main")
 
             discovered_links = []
-            is_error = False
+            is_error = self.is_error_page(content, status_code)
 
             # 链接爬取（根据配置决定）
             if self.dual_crawl_enabled:
                 # 双重爬取模式：完整页面爬取用于链接提取和错误检测
-                full_content, links_data = await self.crawler_pool.crawl_page(url)
+                full_content, links_data, full_status_code = await self.crawler_pool.crawl_page(url)
 
-                # 错误页面检测：检查完整页面内容
-                if full_content and self.is_error_page(full_content):
-                    is_error = True
+                # 错误页面检测：优先使用完整页面的状态码
+                is_error = self.is_error_page(full_content, full_status_code or status_code)
 
                 if links_data:
                     discovered_links = self._extract_links_from_data(links_data)
@@ -316,9 +332,13 @@ class Crawler:
                 if links_data:
                     discovered_links = self._extract_links_from_data(links_data)
 
+            # 记录状态码信息
+            if status_code and status_code >= 400:
+                logger.warning(f"HTTP {status_code} detected for {url}")
+
             return {
                 "url": url,
-                "content": content or "",
+                "content": content,
                 "discovered_links": discovered_links,
                 "is_error": is_error
             }
