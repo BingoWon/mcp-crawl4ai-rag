@@ -293,6 +293,8 @@ class Crawler:
         """爬取单个URL - 404检测优化"""
         try:
             # 内容爬取（始终执行）
+            # “#app-main” 是 https://developer.apple.com/documentation/ 这类网站的通用选择器
+            # “.main” 是有时候会自动跳转到的 https://www.swift.org/documentation/ 这类网站的通用选择器
             content, links_data = await self.crawler_pool.crawl_page(url, "#app-main, .main")
 
             discovered_links = []
