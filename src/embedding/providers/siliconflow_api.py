@@ -125,25 +125,27 @@ class SiliconFlowProvider(EmbeddingProvider):
                                 except Exception:
                                     error_msg = await response.text()
 
-                                # API key相关错误 - 删除失效key
-                                if response.status in [401, 403, 402]:
+                                # 智能错误处理 - 删除vs切换key
+                                if response.status in [401, 402, 403]:  # 认证失败、余额不足、权限拒绝
                                     await self.key_manager.remove_key(current_key)
-                                    self.logger.warning(f"🔑 Key failed (HTTP {response.status}), removed and switching")
-                                    break  # 跳出重试循环，尝试下一个key
+                                    self.logger.warning(f"🗑️ Key permanently failed (HTTP {response.status}), removed")
+                                    break
 
-                                # 可重试错误
-                                if response.status in [429, 503, 504] and retry_attempt < 2:
+                                elif response.status == 429:  # 速率限制 - 立即切换
+                                    self.key_manager.switch_to_next_key()
+                                    self.logger.warning("🔄 Rate limited, switched to next key")
+                                    break
+
+                                # 服务器错误 - 重试
+                                elif response.status in [503, 504] and retry_attempt < 2:
                                     delay = 2.0 * (2 ** retry_attempt)
-                                    self.logger.warning(f"⚠️ HTTP {response.status}, retrying in {delay}s: {error_msg}")
+                                    self.logger.warning(f"⚠️ Server error {response.status}, retrying in {delay}s")
                                     await asyncio.sleep(delay)
                                     continue
 
-                                # 速率限制且启用降级
-                                if response.status == 429 and self.fallback_to_local:
-                                    return await self._fallback_to_local_encoding(texts)
-
                                 # 其他错误
-                                raise RuntimeError(f"SiliconFlow API error {response.status}: {error_msg}")
+                                else:
+                                    raise RuntimeError(f"SiliconFlow API error {response.status}: {error_msg}")
 
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                         if retry_attempt < 2:
