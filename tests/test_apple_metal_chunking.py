@@ -23,7 +23,7 @@ from chunking import SmartChunker
 async def test_apple_metal_chunking():
     """测试 Apple Metal 文档的 chunking"""
     # url = "https://developer.apple.com/documentation/SampleCode"
-    url = "https://developer.apple.com/documentation/docc"
+    url = "https://developer.apple.com/documentation/os/oslogintegerformatting/hex(explicitpositivesign:includeprefix:uppercase:)"
     
     print(f"🚀 开始测试 Apple Metal 文档 chunking")
     print(f"URL: {url}")
@@ -38,7 +38,14 @@ async def test_apple_metal_chunking():
         # 爬取页面
         print("🕷️ 爬取页面内容...")
         async with crawler:
-            clean_content, _ = await crawler.crawler_pool.crawl_page(url, "#app-main, .main")
+            clean_content, _, status_code = await crawler.crawler_pool.crawl_page(url, "#app-main, .main")
+
+            # 检查状态码
+            if status_code and status_code >= 400:
+                print(f"⚠️ HTTP {status_code} detected for {url}")
+                if status_code == 403:
+                    print("❌ 403 Forbidden - 无法访问此页面")
+                    return False
 
         if not clean_content:
             print("❌ 爬取失败或内容为空")

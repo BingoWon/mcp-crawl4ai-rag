@@ -144,7 +144,7 @@ async def get_pages(
         content_count = 0
 
         for page in pages:
-            content = page.get("content", "") or ""
+            content = page["content"]
             if content.strip():
                 content_count += 1
 
@@ -228,8 +228,7 @@ async def get_chunks(
         # 格式化数据 - 现代化处理
         formatted_chunks = []
         for chunk in chunks:
-            # 安全的内容处理
-            content = chunk.get("content", "") or ""
+            content = chunk["content"]
             display_content = content[:100] + "..." if len(content) > 100 else content
 
             # 安全的embedding处理
