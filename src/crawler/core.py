@@ -267,7 +267,7 @@ class Crawler:
         """爬取单个URL - 404检测优化"""
         try:
             # 内容爬取（始终执行）
-            content, links_data = await self.crawler_pool.crawl_page(url, "#app-main")
+            content, links_data = await self.crawler_pool.crawl_page(url, "#app-main, .main")
 
             discovered_links = []
             is_404 = False
