@@ -73,7 +73,10 @@ class Crawler:
 
     # 常量定义 - 消除魔法数字
     APPLE_DOCS_URL_PREFIX = "https://developer.apple.com/documentation/"
-    NOT_FOUND_MESSAGE = "The page you're looking for can't be found."
+    ERROR_MESSAGES = [
+        "The page you're looking for can't be found.",
+        "An unknown error occurred."
+    ]
 
     # 全局最优解参数 - 统一控制
     WORKER_BATCH_SIZE = 5         # 默认值，环境变量可覆盖
@@ -160,6 +163,29 @@ class Crawler:
             ))
 
         return [normalize_url(url) for url in urls]
+
+    def filter_malformed_urls(self, urls: List[str]) -> List[str]:
+        """过滤错误格式URL - 全局最优解"""
+        def is_valid_url(url: str) -> bool:
+            return not any([
+                url.count('https://') > 1 or url.count('http://') > 1,  # 重复协议
+                '%ef%bb%bf' in url or '\ufeff' in url,                  # BOM字符
+                url.count('/documentation/') > 1,                       # 路径重复
+                'https:/' in url and not url.startswith('https://'),    # 协议格式错误
+                len(url) > 200,                                         # 异常长度
+                url.count('developer.apple.com') > 1                   # 重复域名
+            ])
+
+        valid_urls = [url for url in urls if is_valid_url(url)]
+
+        if (filtered_count := len(urls) - len(valid_urls)) > 0:
+            logger.info(f"Filtered {filtered_count} malformed URLs from {len(urls)} total")
+
+        return valid_urls
+
+    def is_error_page(self, content: str) -> bool:
+        """检测页面是否为错误页面 - 全局最优解"""
+        return any(error_msg in content for error_msg in self.ERROR_MESSAGES)
 
     async def start_crawling(self, start_url: str) -> None:
         """启动Worker Pool爬虫 - 全局最优解"""
@@ -270,16 +296,16 @@ class Crawler:
             content, links_data = await self.crawler_pool.crawl_page(url, "#app-main, .main")
 
             discovered_links = []
-            is_404 = False
+            is_error = False
 
             # 链接爬取（根据配置决定）
             if self.dual_crawl_enabled:
-                # 双重爬取模式：完整页面爬取用于链接提取和404检测
+                # 双重爬取模式：完整页面爬取用于链接提取和错误检测
                 full_content, links_data = await self.crawler_pool.crawl_page(url)
 
-                # 404检测：检查完整页面内容
-                if full_content and self.NOT_FOUND_MESSAGE in full_content:
-                    is_404 = True
+                # 错误页面检测：检查完整页面内容
+                if full_content and self.is_error_page(full_content):
+                    is_error = True
 
                 if links_data:
                     discovered_links = self._extract_links_from_data(links_data)
@@ -292,7 +318,7 @@ class Crawler:
                 "url": url,
                 "content": content or "",
                 "discovered_links": discovered_links,
-                "is_404": is_404
+                "is_error": is_error
             }
 
         except Exception as e:
@@ -301,7 +327,7 @@ class Crawler:
                 "url": url,
                 "content": "",
                 "discovered_links": [],
-                "is_404": False
+                "is_error": False
             }
 
     async def _add_to_storage_buffer(self, result: Dict[str, Any]) -> None:
@@ -358,13 +384,13 @@ class Crawler:
         # 删除404 URL
         if invalid_urls:
             deleted_count = await self.db_operations.delete_pages_batch(invalid_urls)
-            logger.warning(f"🗑️ Deleted {deleted_count} invalid URLs (404 pages)")
+            logger.warning(f"🗑️ Deleted {deleted_count} invalid URLs (error pages)")
 
     def _separate_buffer_data(self, buffer_data: List[Dict[str, Any]]) -> Tuple[List[Tuple[str, str]], List[str], List[str]]:
         """分离缓冲数据 - 优雅现代精简"""
-        # 分离有效结果和404结果
-        valid_results = [r for r in buffer_data if not r.get("is_404", False)]
-        invalid_urls = [r["url"] for r in buffer_data if r.get("is_404", False)]
+        # 分离有效结果和错误结果
+        valid_results = [r for r in buffer_data if not r.get("is_error", False)]
+        invalid_urls = [r["url"] for r in buffer_data if r.get("is_error", False)]
 
         # 提取有效数据
         url_content_pairs = [(r["url"], r["content"]) for r in valid_results]
@@ -386,16 +412,16 @@ class Crawler:
             logger.info(f"🔗 Discovered {len(all_discovered_links)} new links")
 
     async def _store_discovered_links(self, links: List[str]) -> None:
-        """批量存储发现的链接 - 优雅现代精简"""
+        """批量存储发现的链接 - 全局最优解"""
         if not links:
             return
 
-        # 批量清理和过滤Apple文档链接
+        # URL处理流水线：清理 → 过滤 → 验证
         cleaned_links = self.clean_and_normalize_urls_batch(links)
-        apple_links = [link for link in cleaned_links if link.startswith(self.APPLE_DOCS_URL_PREFIX)]
+        valid_links = self.filter_malformed_urls(cleaned_links)
+        apple_links = [link for link in valid_links if link.startswith(self.APPLE_DOCS_URL_PREFIX)]
 
         if apple_links:
-            # 批量插入数据库
             new_count = await self.db_operations.insert_urls_batch(apple_links)
             if new_count > 0:
                 logger.info(f"Added {new_count} new URLs to crawl queue")
