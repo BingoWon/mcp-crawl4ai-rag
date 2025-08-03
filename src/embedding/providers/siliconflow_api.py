@@ -118,7 +118,7 @@ class SiliconFlowProvider(EmbeddingProvider):
                             error_msg = await response.text()
 
                         # 不可重试错误
-                        if response.status in [400, 401, 404]:
+                        if response.status in [400, 401, 403, 404]:
                             self.logger.error(f"❌ HTTP {response.status}: {error_msg}")
                             raise RuntimeError(f"SiliconFlow API error {response.status}: {error_msg}")
 

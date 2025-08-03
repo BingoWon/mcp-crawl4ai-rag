@@ -8,5 +8,4 @@ repos
 tests/output/*
 *.md
 *.txt
-*.json
 *.log*

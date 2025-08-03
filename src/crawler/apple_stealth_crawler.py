@@ -47,6 +47,8 @@ import os
 from utils.logger import setup_logger
 import re
 import browser_cookie3
+import json
+from pathlib import Path
 
 logger = setup_logger(__name__)
 
@@ -60,6 +62,7 @@ class CrawlerPool:
     def __init__(self, pool_size: int = 3):
         """初始化Apple隐蔽爬虫连接池"""
         self.pool_size = pool_size
+        self.cookie_cache_path = Path(".cookie_cache/apple_cookies.json")
         self.apple_cookies = self._get_apple_cookies()
         self.browser_config = self._create_stealth_browser_config()
         self.crawler_pool: List[AsyncWebCrawler] = []
@@ -96,7 +99,27 @@ class CrawlerPool:
         logger.info("Apple stealth crawler pool closed")
 
     def _get_apple_cookies(self) -> Dict[str, str]:
-        """从Edge浏览器获取Apple网站Cookie，Edge不存在时跳过"""
+        """从Edge浏览器获取Apple网站Cookie，支持本地缓存和恢复机制"""
+        # 首先尝试从Edge浏览器获取cookie
+        cookie_dict = self._extract_cookies_from_browser()
+
+        if cookie_dict:
+            # 成功获取到cookie，保存到缓存
+            self._save_cookies_cache(cookie_dict)
+            logger.info(f"Successfully extracted {len(cookie_dict)} Apple cookies from Edge and saved to cache")
+            return cookie_dict
+        else:
+            # 无法从浏览器获取cookie，尝试使用缓存
+            cached_cookies = self._load_cookies_cache()
+            if cached_cookies:
+                logger.info(f"Using {len(cached_cookies)} Apple cookies from cache file")
+                return cached_cookies
+            else:
+                logger.info("No cookies available from browser or cache")
+                return {}
+
+    def _extract_cookies_from_browser(self) -> Dict[str, str]:
+        """从Edge浏览器提取Apple网站Cookie"""
         try:
             cookies = browser_cookie3.edge(domain_name='apple.com')
             cookie_dict = {}
@@ -105,14 +128,41 @@ class CrawlerPool:
                 if 'apple.com' in cookie.domain or 'developer.apple.com' in cookie.domain:
                     cookie_dict[cookie.name] = cookie.value
 
-            if cookie_dict:
-                logger.info(f"Successfully extracted {len(cookie_dict)} Apple cookies from Edge")
-
             return cookie_dict
 
         except Exception as e:
             logger.info(f"Edge browser not found or cookie extraction failed: {e}")
-            logger.info("Continuing without browser cookies")
+            return {}
+
+    def _save_cookies_cache(self, cookies: Dict[str, str]) -> None:
+        """保存cookie到本地缓存文件"""
+        try:
+            self.cookie_cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+            import time
+            cache_data = {"cookies": cookies, "timestamp": time.time()}
+
+            with open(self.cookie_cache_path, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False)
+
+            logger.info(f"Saved {len(cookies)} cookies to cache file: {self.cookie_cache_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save cookies cache: {e}")
+
+    def _load_cookies_cache(self) -> Dict[str, str]:
+        """从本地缓存文件加载cookie"""
+        try:
+            if not self.cookie_cache_path.exists():
+                return {}
+
+            with open(self.cookie_cache_path, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+
+            cookies = cache_data["cookies"]
+            logger.info(f"Loaded {len(cookies)} cookies from cache file: {self.cookie_cache_path}")
+            return cookies
+        except Exception as e:
+            logger.warning(f"Failed to load cookies cache: {e}")
             return {}
 
     def _create_stealth_browser_config(self) -> BrowserConfig:
@@ -157,9 +207,10 @@ class CrawlerPool:
         """获取Apple网站专用请求头"""
         return {
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7,en-NZ",
             "Cache-Control": "no-cache",
+            "DNT": "1",
             "Pragma": "no-cache",
             "Sec-CH-UA": '"Not)A;Brand";v="8", "Chromium";v="138", "Microsoft Edge";v="138"',
             "Sec-CH-UA-Mobile": "?0",
@@ -168,6 +219,7 @@ class CrawlerPool:
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "none",
             "Sec-Fetch-User": "?1",
+            "Sec-GPC": "1",
             "Upgrade-Insecure-Requests": "1",
             "User-Agent": self.USER_AGENT
         }
