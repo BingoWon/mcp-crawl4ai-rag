@@ -16,11 +16,22 @@ class DatabaseViewer {
       chunks: { page: 1, size: 50, total: 0, pages: 0 },
     };
 
+    // 倒计时相关
+    this.countdownTimer = null;
+    this.refreshTimer = null;
+    this.remainingTime = this.refreshInterval / 1000; // 剩余秒数
+
     this.init();
   }
 
   init() {
+    // 初始化倒计时显示
+    this.updateCountdownDisplay();
+
+    // 加载初始数据
     this.loadData();
+
+    // 启动自动刷新和倒计时
     this.startAutoRefresh();
   }
 
@@ -244,9 +255,66 @@ class DatabaseViewer {
   }
 
   startAutoRefresh() {
-    setInterval(() => {
+    // 启动倒计时显示
+    this.startCountdown();
+
+    // 启动自动刷新
+    this.refreshTimer = setInterval(() => {
       this.loadData();
+      this.resetCountdown();
     }, this.refreshInterval);
+  }
+
+  startCountdown() {
+    this.remainingTime = this.refreshInterval / 1000;
+    this.updateCountdownDisplay();
+
+    this.countdownTimer = setInterval(() => {
+      this.remainingTime--;
+      this.updateCountdownDisplay();
+
+      if (this.remainingTime <= 0) {
+        this.remainingTime = this.refreshInterval / 1000;
+      }
+    }, 1000);
+  }
+
+  resetCountdown() {
+    this.remainingTime = this.refreshInterval / 1000;
+    this.updateCountdownDisplay();
+  }
+
+  updateCountdownDisplay() {
+    const timerElement = document.getElementById('countdown-timer');
+    if (timerElement) {
+      timerElement.textContent = `${this.remainingTime}s`;
+
+      // 添加视觉效果：最后1秒时变红
+      if (this.remainingTime <= 1) {
+        timerElement.style.background = '#dc3545';
+        timerElement.style.color = 'white';
+      } else {
+        timerElement.style.background = '#e9ecef';
+        timerElement.style.color = '#495057';
+      }
+    }
+  }
+
+  // 立即刷新功能
+  refreshNow() {
+    // 清除现有定时器
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+    }
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+    }
+
+    // 立即加载数据
+    this.loadData();
+
+    // 重新启动自动刷新
+    this.startAutoRefresh();
   }
 
   // 智能刷新：数据比较函数

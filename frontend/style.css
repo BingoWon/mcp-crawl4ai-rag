@@ -36,12 +36,61 @@ body {
   color: #2c3e50;
 }
 
+.header-info {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
 .global-stats {
   display: flex;
   gap: 1.5rem;
   font-size: 0.9rem;
   color: #495057;
   font-weight: 500;
+}
+
+/* 刷新倒计时样式 */
+.refresh-countdown {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.countdown-label {
+  font-weight: 500;
+}
+
+.countdown-timer {
+  background: #e9ecef;
+  color: #495057;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  min-width: 2rem;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+}
+
+.refresh-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.refresh-btn:hover {
+  background: #0056b3;
+}
+
+.refresh-btn:active {
+  transform: translateY(1px);
 }
 
 /* 主内容区 */
