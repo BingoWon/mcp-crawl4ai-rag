@@ -11,10 +11,17 @@
       <!-- 头部 -->
       <header class="header">
         <h1>Database Viewer</h1>
-        <div class="global-stats">
-          <span id="total-pages">总数: --</span>
-          <span id="content-pages">有内容: -- (--%)</span>
-          <span id="processed-pages">已处理: -- (--%)</span>
+        <div class="header-info">
+          <div class="global-stats">
+            <span id="total-pages">总数: --</span>
+            <span id="content-pages">有内容: -- (--%)</span>
+            <span id="processed-pages">已处理: -- (--%)</span>
+          </div>
+          <div class="refresh-countdown">
+            <span class="countdown-label">下次刷新:</span>
+            <span id="countdown-timer" class="countdown-timer">3s</span>
+            <button id="refresh-now-btn" class="refresh-btn" onclick="dbViewer.refreshNow()">立即刷新</button>
+          </div>
         </div>
       </header>
 

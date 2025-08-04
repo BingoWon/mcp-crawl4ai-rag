@@ -21,7 +21,7 @@ class DatabaseConfig:
     port: int = int(os.getenv('CLOUD_DB_PORT', '5432'))
     database: str = os.getenv('CLOUD_DB_DATABASE', 'apple_rag_db')
     user: str = os.getenv('CLOUD_DB_USER', 'apple_rag_user')
-    password: str = os.getenv('CLOUD_DB_PASSWORD', 'PYuwnP39iLR2pLk')
+    password: str = os.getenv('CLOUD_DB_PASSWORD', '')
     sslmode: str = os.getenv('CLOUD_DB_SSLMODE', 'disable')
 
     # Connection pool configuration
