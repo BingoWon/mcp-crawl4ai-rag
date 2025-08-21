@@ -126,6 +126,98 @@ body {
   color: #495057;
 }
 
+/* 搜索容器 */
+.search-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 300px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.search-input::placeholder {
+  color: #6c757d;
+}
+
+.search-btn {
+  background: #007bff;
+  border: none;
+  color: white;
+  padding: 0.4rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.search-btn:hover {
+  background: #0056b3;
+}
+
+.search-btn:active {
+  background: #004085;
+}
+
+.search-clear {
+  background: #6c757d;
+  border: none;
+  color: white;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.search-clear:hover {
+  background: #5a6268;
+}
+
+.search-clear:active {
+  background: #495057;
+}
+
+/* 可点击行样式 */
+.clickable-row {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.clickable-row:hover {
+  background-color: #f8f9fa;
+}
+
+.clickable-row:active {
+  background-color: #e9ecef;
+}
+
+
+
 .panel-count {
   background: #007bff;
   color: white;
@@ -190,22 +282,16 @@ tr:hover {
 
 
 
-/* URL列样式 - 可点击 */
+/* URL列样式 - 普通文本 */
 .url-cell {
   font-family: "Monaco", "Menlo", monospace;
-  color: #007bff;
+  color: #495057;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.75rem;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.url-cell:hover {
-  color: #0056b3;
-  background: #e3f2fd;
+  text-decoration: none;
 }
 
 /* Content列样式 */
@@ -239,15 +325,7 @@ td:nth-last-child(2) {
   font-size: 0.7rem;
 }
 
-/* Embedding信息样式 */
-.embedding-info {
-  font-family: "Monaco", "Menlo", monospace;
-  font-size: 0.7rem;
-  color: #495057;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+
 
 /* 状态样式 */
 .error,
@@ -391,24 +469,7 @@ td:nth-last-child(2) {
   overflow-y: auto;
 }
 
-.embedding-raw {
-  font-family: "Monaco", "Menlo", monospace;
-  font-size: 0.7rem;
-  background: #f1f3f4;
-  padding: 0.75rem;
-  border-radius: 4px;
-  overflow-x: auto;
-  max-height: 200px;
-  overflow-y: auto;
-  margin: 0.5rem 0 0 0;
-}
 
-details summary {
-  cursor: pointer;
-  font-weight: 600;
-  color: #495057;
-  margin-bottom: 0.5rem;
-}
 
 /* 分页样式 */
 .pagination {

@@ -31,6 +31,17 @@
         <section class="panel left-panel">
           <div class="panel-header">
             <h2>Pages</h2>
+            <div class="search-container">
+              <input
+                type="text"
+                id="pages-search"
+                class="search-input"
+                placeholder="搜索 URL..."
+                autocomplete="off"
+              />
+              <button id="pages-search-btn" class="search-btn" title="搜索">🔍</button>
+              <button id="pages-search-clear" class="search-clear" title="清除搜索">×</button>
+            </div>
           </div>
           <div class="panel-content">
             <div id="pages-error" class="error" style="display: none"></div>
@@ -58,6 +69,17 @@
         <section class="panel right-panel">
           <div class="panel-header">
             <h2>Chunks</h2>
+            <div class="search-container">
+              <input
+                type="text"
+                id="chunks-search"
+                class="search-input"
+                placeholder="搜索 URL..."
+                autocomplete="off"
+              />
+              <button id="chunks-search-btn" class="search-btn" title="搜索">🔍</button>
+              <button id="chunks-search-clear" class="search-clear" title="清除搜索">×</button>
+            </div>
           </div>
           <div class="panel-content">
             <div id="chunks-error" class="error" style="display: none"></div>
@@ -67,7 +89,6 @@
                   <tr>
                     <th>URL</th>
                     <th>Content</th>
-                    <th>Embedding</th>
                   </tr>
                 </thead>
                 <tbody id="chunks-tbody"></tbody>
@@ -97,18 +118,6 @@
           <div class="modal-section">
             <h4>完整内容:</h4>
             <div id="modal-content" class="content-text"></div>
-          </div>
-          <div
-            class="modal-section"
-            id="modal-embedding-section"
-            style="display: none"
-          >
-            <h4>Embedding信息:</h4>
-            <p id="modal-embedding-info"></p>
-            <details>
-              <summary>查看原始向量数据</summary>
-              <pre id="modal-embedding-raw" class="embedding-raw"></pre>
-            </details>
           </div>
         </div>
       </div>

@@ -16,6 +16,12 @@ class DatabaseViewer {
       chunks: { page: 1, size: 50, total: 0, pages: 0 },
     };
 
+    // 搜索状态
+    this.searchState = {
+      pages: "",
+      chunks: ""
+    };
+
     // 倒计时相关
     this.countdownTimer = null;
     this.refreshTimer = null;
@@ -27,6 +33,9 @@ class DatabaseViewer {
   init() {
     // 初始化倒计时显示
     this.updateCountdownDisplay();
+
+    // 设置搜索事件监听器
+    this.setupSearchListeners();
 
     // 加载初始数据
     this.loadData();
@@ -41,8 +50,9 @@ class DatabaseViewer {
 
   async loadPages() {
     try {
+      const searchParam = this.searchState.pages ? `&search=${encodeURIComponent(this.searchState.pages)}` : '';
       const response = await fetch(
-        `${this.apiBase}/pages?sort=created_at&order=desc`
+        `${this.apiBase}/pages?sort=created_at&order=desc${searchParam}`
       );
       const result = await response.json();
 
@@ -77,8 +87,9 @@ class DatabaseViewer {
   async loadChunks(page = null) {
     try {
       const currentPage = page || this.pagination.chunks.page;
+      const searchParam = this.searchState.chunks ? `&search=${encodeURIComponent(this.searchState.chunks)}` : '';
       const response = await fetch(
-        `${this.apiBase}/chunks?page=${currentPage}&size=${this.pagination.chunks.size}`
+        `${this.apiBase}/chunks?page=${currentPage}&size=${this.pagination.chunks.size}${searchParam}`
       );
       const result = await response.json();
 
@@ -225,11 +236,8 @@ class DatabaseViewer {
       : `<span style="color: #6c757d;">未处理</span>`;
 
     return `
-      <tr>
-        <td class="url-cell" title="${page.full_url || page.url}"
-            onclick="showContentModal('${page.id}', '${this.escapeJsString(
-      page.full_url || page.url
-    )}', '${this.escapeJsString(page.full_content)}', 'page')">${page.url}</td>
+      <tr class="clickable-row" onclick="showContentModal('${page.id}', '${this.escapeJsString(page.full_url || page.url)}', '${this.escapeJsString(page.full_content)}', 'page')">
+        <td class="url-cell" title="${page.full_url || page.url}">${page.url}</td>
         <td class="content-cell" title="${page.content}">${page.content}</td>
         <td>${this.formatDate(page.created_at)}</td>
         <td>${processedStatus}</td>
@@ -238,18 +246,27 @@ class DatabaseViewer {
   }
 
   createChunkRow(chunk) {
+    // 解析 content 字段中的 JSON 数据用于表格显示
+    let displayContent = chunk.content;
+
+    try {
+      const parsedContent = JSON.parse(chunk.content);
+      // 显示 JSON 的简化版本，包含 context 和 content 信息
+      const contextInfo = parsedContent.context ? `Context: ${parsedContent.context.substring(0, 50)}...` : 'No context';
+      const contentInfo = parsedContent.content ? `Content: ${parsedContent.content.substring(0, 100)}...` : 'No content';
+      displayContent = `${contextInfo} | ${contentInfo}`;
+    } catch (e) {
+      // 如果解析失败，显示原始内容的前150字符
+      displayContent = chunk.content.length > 150 ? chunk.content.substring(0, 150) + '...' : chunk.content;
+    }
+
     return `
-      <tr>
-        <td class="url-cell" title="${chunk.full_url || chunk.url}"
-            onclick="showContentModal('${chunk.id}', '${this.escapeJsString(
-      chunk.full_url || chunk.url
-    )}', '${this.escapeJsString(
-      chunk.full_content
-    )}', 'chunk', '${this.escapeJsString(
-      chunk.embedding_info
-    )}', '${this.escapeJsString(chunk.raw_embedding)}')">${chunk.url}</td>
-        <td class="content-cell" title="${chunk.content}">${chunk.content}</td>
-        <td class="embedding-info">${chunk.embedding_info}</td>
+      <tr class="clickable-row"
+          data-chunk-id="${chunk.id}"
+          data-chunk-url="${this.escapeHtml(chunk.full_url || chunk.url)}"
+          onclick="window.dbViewer.handleChunkRowClick(this)">
+        <td class="url-cell" title="${chunk.full_url || chunk.url}">${chunk.url}</td>
+        <td class="content-cell" title="点击查看完整内容">${displayContent}</td>
       </tr>
     `;
   }
@@ -392,6 +409,186 @@ class DatabaseViewer {
     // Pages表无分页功能，固定显示100条数据
   }
 
+  // 设置搜索事件监听器
+  setupSearchListeners() {
+    // Pages 搜索
+    const pagesSearchInput = document.getElementById('pages-search');
+    const pagesSearchBtn = document.getElementById('pages-search-btn');
+    const pagesSearchClear = document.getElementById('pages-search-clear');
+
+    if (pagesSearchInput) {
+      // 输入事件 - 实时搜索
+      pagesSearchInput.addEventListener('input', (e) => {
+        this.searchState.pages = e.target.value.trim();
+        this.debounceSearch('pages');
+      });
+
+      // 回车键搜索
+      pagesSearchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.performSearch('pages');
+        }
+      });
+    }
+
+    if (pagesSearchBtn) {
+      pagesSearchBtn.addEventListener('click', () => {
+        this.searchState.pages = pagesSearchInput.value.trim();
+        this.performSearch('pages');
+      });
+    }
+
+    if (pagesSearchClear) {
+      pagesSearchClear.addEventListener('click', () => {
+        this.clearSearch('pages');
+      });
+    }
+
+    // Chunks 搜索
+    const chunksSearchInput = document.getElementById('chunks-search');
+    const chunksSearchBtn = document.getElementById('chunks-search-btn');
+    const chunksSearchClear = document.getElementById('chunks-search-clear');
+
+    if (chunksSearchInput) {
+      // 输入事件 - 实时搜索
+      chunksSearchInput.addEventListener('input', (e) => {
+        this.searchState.chunks = e.target.value.trim();
+        this.debounceSearch('chunks');
+      });
+
+      // 回车键搜索
+      chunksSearchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.performSearch('chunks');
+        }
+      });
+    }
+
+    if (chunksSearchBtn) {
+      chunksSearchBtn.addEventListener('click', () => {
+        this.searchState.chunks = chunksSearchInput.value.trim();
+        this.performSearch('chunks');
+      });
+    }
+
+    if (chunksSearchClear) {
+      chunksSearchClear.addEventListener('click', () => {
+        this.clearSearch('chunks');
+      });
+    }
+  }
+
+  // 防抖搜索
+  debounceSearch(type) {
+    if (this.searchTimers && this.searchTimers[type]) {
+      clearTimeout(this.searchTimers[type]);
+    }
+
+    if (!this.searchTimers) {
+      this.searchTimers = {};
+    }
+
+    this.searchTimers[type] = setTimeout(() => {
+      this.performSearch(type);
+    }, 500); // 500ms 防抖
+  }
+
+  // 执行搜索
+  async performSearch(type) {
+    if (type === 'pages') {
+      await this.loadPages();
+    } else if (type === 'chunks') {
+      // 重置到第一页
+      this.pagination.chunks.page = 1;
+      await this.loadChunks(1);
+    }
+  }
+
+  // 清除搜索
+  clearSearch(type) {
+    const input = document.getElementById(`${type}-search`);
+    if (input) {
+      input.value = '';
+      this.searchState[type] = '';
+      this.performSearch(type);
+    }
+  }
+
+  // 处理 chunk 行点击事件
+  handleChunkRowClick(row) {
+    const id = row.getAttribute('data-chunk-id');
+    const url = row.getAttribute('data-chunk-url');
+
+    console.log('=== Chunk 点击调试信息 ===');
+    console.log('点击的 chunk ID:', id);
+    console.log('点击的 chunk URL:', url);
+    console.log('lastData.chunks 存在:', !!this.lastData.chunks);
+
+    if (this.lastData.chunks) {
+      console.log('chunks 是数组:', Array.isArray(this.lastData.chunks));
+
+      if (Array.isArray(this.lastData.chunks)) {
+        console.log('chunks 数组长度:', this.lastData.chunks.length);
+        console.log('前3个 chunk ID:', this.lastData.chunks.slice(0, 3).map(c => c.id));
+      } else {
+        console.log('chunks 数据结构:', Object.keys(this.lastData.chunks));
+        console.log('chunks.data 存在:', !!this.lastData.chunks.data);
+
+        if (this.lastData.chunks.data) {
+          console.log('chunks.data 长度:', this.lastData.chunks.data.length);
+          console.log('前3个 chunk ID:', this.lastData.chunks.data.slice(0, 3).map(c => c.id));
+        }
+      }
+    }
+
+    // 从内存中的数据获取完整内容
+    const chunk = this.findChunkById(id);
+    console.log('找到的 chunk:', !!chunk);
+
+    if (chunk) {
+      console.log('chunk.full_content 长度:', chunk.full_content ? chunk.full_content.length : 0);
+      showContentModal(id, url, chunk.full_content, 'chunk');
+    } else {
+      console.log('未找到 chunk，显示错误信息');
+      showContentModal(id, url, '调试信息：无法获取完整内容。请查看控制台调试输出。', 'chunk');
+    }
+  }
+
+  // 根据 ID 查找 chunk 数据
+  findChunkById(id) {
+    console.log('查找 chunk ID:', id);
+
+    // 检查数据结构
+    if (this.lastData.chunks) {
+      console.log('lastData.chunks 类型:', Array.isArray(this.lastData.chunks) ? 'Array' : 'Object');
+
+      // 如果是数组，直接查找
+      if (Array.isArray(this.lastData.chunks)) {
+        console.log('从数组中查找，数组长度:', this.lastData.chunks.length);
+        const found = this.lastData.chunks.find(chunk => {
+          console.log('比较:', chunk.id, '===', id, '结果:', chunk.id === id);
+          return chunk.id === id;
+        });
+        console.log('查找结果:', !!found);
+        return found;
+      }
+
+      // 如果是对象且有 data 属性
+      if (this.lastData.chunks.data && Array.isArray(this.lastData.chunks.data)) {
+        console.log('从 data 属性中查找，数组长度:', this.lastData.chunks.data.length);
+        const found = this.lastData.chunks.data.find(chunk => {
+          console.log('比较:', chunk.id, '===', id, '结果:', chunk.id === id);
+          return chunk.id === id;
+        });
+        console.log('查找结果:', !!found);
+        return found;
+      }
+    }
+
+    console.log('lastData.chunks 不存在或格式不正确');
+    return null;
+  }
+
   // 清除缓存，强制刷新
   clearCache() {
     this.lastData = {
@@ -406,23 +603,18 @@ class DatabaseViewer {
 let dbViewer;
 
 // 模态框相关函数
-function showContentModal(
-  _id,
-  url,
-  content,
-  type,
-  embeddingInfo = "",
-  rawEmbedding = ""
-) {
+function showContentModal(_id, url, content, type) {
+  console.log('=== showContentModal 调试信息 ===');
+  console.log('ID:', _id);
+  console.log('URL:', url);
+  console.log('Content 类型:', typeof content);
+  console.log('Content 长度:', content ? content.length : 0);
+  console.log('Type:', type);
+
   const modal = document.getElementById("content-modal");
   const modalTitle = document.getElementById("modal-title");
   const modalUrl = document.getElementById("modal-url");
   const modalContent = document.getElementById("modal-content");
-  const modalEmbeddingSection = document.getElementById(
-    "modal-embedding-section"
-  );
-  const modalEmbeddingInfo = document.getElementById("modal-embedding-info");
-  const modalEmbeddingRaw = document.getElementById("modal-embedding-raw");
 
   // 设置标题
   modalTitle.textContent = type === "page" ? "页面详情" : "Chunk详情";
@@ -430,17 +622,34 @@ function showContentModal(
   // 设置URL
   modalUrl.textContent = url;
 
-  // 设置内容
-  modalContent.textContent = content || "无内容";
+  // 解析并设置内容
+  let displayContent = content || "无内容";
 
-  // 设置embedding信息（仅对chunks显示）
-  if (type === "chunk" && embeddingInfo) {
-    modalEmbeddingSection.style.display = "block";
-    modalEmbeddingInfo.textContent = embeddingInfo;
-    modalEmbeddingRaw.textContent = rawEmbedding || "无原始数据";
-  } else {
-    modalEmbeddingSection.style.display = "none";
+  // 如果是 chunk 类型，尝试格式化 JSON 显示
+  if (type === "chunk" && content) {
+    console.log('处理 chunk 内容...');
+    console.log('原始内容长度:', content.length);
+
+    try {
+      // 尝试解析 JSON 并格式化显示
+      const parsedContent = JSON.parse(content);
+      console.log('JSON 解析成功');
+      console.log('JSON 结构:', Object.keys(parsedContent));
+
+      // 格式化 JSON 为易读格式
+      displayContent = JSON.stringify(parsedContent, null, 2);
+      console.log('格式化后内容长度:', displayContent.length);
+    } catch (e) {
+      console.log('JSON 解析失败，显示原始内容:', e.message);
+      // 如果解析失败，显示原始内容
+      displayContent = content;
+    }
   }
+
+  console.log('最终显示内容长度:', displayContent.length);
+
+  // 使用 pre 标签保持格式
+  modalContent.innerHTML = `<pre style="white-space: pre-wrap; word-wrap: break-word;">${displayContent}</pre>`;
 
   // 显示模态框
   modal.style.display = "flex";
@@ -468,6 +677,7 @@ document.addEventListener("keydown", (e) => {
 // 页面加载完成后启动
 document.addEventListener("DOMContentLoaded", () => {
   dbViewer = new DatabaseViewer();
+  window.dbViewer = dbViewer; // 暴露到全局
 
   // 添加快捷键：按F5清除缓存并刷新
   document.addEventListener("keydown", (e) => {

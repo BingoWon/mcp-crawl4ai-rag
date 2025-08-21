@@ -9,3 +9,4 @@ tests/output/*
 *.md
 *.txt
 *.log*
+*.json

@@ -82,7 +82,7 @@ class SiliconFlowProvider(EmbeddingProvider):
         if self.fallback_to_local:
             self.logger.info("🔄 Local fallback enabled for rate limit scenarios")
 
-    def encode_single(self, text: str) -> List[float]:
+    def encode_single(self, text: str, is_query: bool = False) -> List[float]:
         """单个文本编码"""
         return asyncio.run(self.encode_batch_concurrent([text]))[0]
 
