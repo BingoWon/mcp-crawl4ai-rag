@@ -23,7 +23,7 @@ DB_CONFIG = {
     'port': 5432,
     'database': 'apple_rag_db',
     'user': 'apple_rag_user',
-    'password': 'REDACTED_PASSWORD',  # 请填入你的密码
+    'password': os.getenv('DB_PASSWORD', ''),  # 从环境变量读取，避免硬编码
 }
 
 # ============================================================================

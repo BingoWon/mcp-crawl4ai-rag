@@ -39,7 +39,7 @@ DB_HOST="localhost"
 DB_PORT="5432"
 DB_NAME="apple_rag_db"
 DB_USER="apple_rag_user"
-DB_PASSWORD="REDACTED_PASSWORD"
+DB_PASSWORD="${DB_PASSWORD:-}"  # 从环境变量读取，避免硬编码
 
 # ============================================================================
 # 检查环境
