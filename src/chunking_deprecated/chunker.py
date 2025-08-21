@@ -86,8 +86,8 @@ class SmartChunker:
     """
 
     # 超参数定义
-    TARGET_CHUNK_SIZE = 2500
-    MAX_CHUNK_SIZE = 3000
+    TARGET_CHUNK_SIZE = 5000
+    MAX_CHUNK_SIZE = 6000
 
     def __init__(self):
         pass

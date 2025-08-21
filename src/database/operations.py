@@ -134,12 +134,14 @@ class DatabaseOperations:
             await conn.execute("SELECT pg_advisory_lock($1)", lock_id)
 
             try:
-                # 优雅设计：最新爬取的内容优先处理，确保新鲜度
+                # 只处理Apple文档：包括根URL和子路径，排除YouTube视频URL
                 results = await conn.fetch("""
                     SELECT url, content FROM pages
                     WHERE processed_at IS NULL
                     AND content IS NOT NULL
                     AND content != ''
+                    AND (url = 'https://developer.apple.com/documentation'
+                         OR url LIKE 'https://developer.apple.com/documentation/%')
                     ORDER BY created_at DESC
                     LIMIT $1
                     FOR UPDATE SKIP LOCKED
