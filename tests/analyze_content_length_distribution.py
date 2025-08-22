@@ -222,8 +222,10 @@ Q99: {self.stats['q99']:.0f}"""
             (0, 500, "Very Short (0-500)"),
             (501, 1000, "Short (501-1000)"),
             (1001, 2000, "Medium (1001-2000)"),
-            (2001, 5000, "Long (2001-5000)"),
-            (5001, 10000, "Very Long (5001-10000)"),
+            (2001, 3000, "Long (2001-3000)"),
+            (3001, 4000, "Long+ (3001-4000)"),
+            (4001, 5000, "Very Long (4001-5000)"),
+            (5001, 10000, "Very Long+ (5001-10000)"),
             (10001, float('inf'), "Extremely Long (10000+)")
         ]
         
@@ -285,6 +287,15 @@ Q99: {self.stats['q99']:.0f}"""
                     f.write(f"{key}: {value:.2f}\n")
                 else:
                     f.write(f"{key}: {value}\n")
+
+            f.write("\n百分位数解释:\n")
+            f.write("-" * 20 + "\n")
+            f.write(f"Q25 ({self.stats['q25']:.0f}): 25%的chunks长度 ≤ {self.stats['q25']:.0f}字符\n")
+            f.write(f"Q75 ({self.stats['q75']:.0f}): 75%的chunks长度 ≤ {self.stats['q75']:.0f}字符\n")
+            f.write(f"Q90 ({self.stats['q90']:.0f}): 90%的chunks长度 ≤ {self.stats['q90']:.0f}字符\n")
+            f.write(f"Q95 ({self.stats['q95']:.0f}): 95%的chunks长度 ≤ {self.stats['q95']:.0f}字符\n")
+            f.write(f"Q99 ({self.stats['q99']:.0f}): 99%的chunks长度 ≤ {self.stats['q99']:.0f}字符\n")
+            f.write("说明: Q25-Q75区间包含50%的数据，是核心分布区\n")
             
             f.write("\n长度分段统计:\n")
             f.write("-" * 20 + "\n")
@@ -292,19 +303,24 @@ Q99: {self.stats['q99']:.0f}"""
                 (0, 500, "Very Short"),
                 (501, 1000, "Short"),
                 (1001, 2000, "Medium"),
-                (2001, 5000, "Long"),
-                (5001, 10000, "Very Long"),
+                (2001, 3000, "Long"),
+                (3001, 4000, "Long+"),
+                (4001, 5000, "Very Long"),
+                (5001, 10000, "Very Long+"),
                 (10001, float('inf'), "Extremely Long")
             ]
             
+            total_chunks = len(self.content_lengths)
             for min_len, max_len, label in segments:
                 if max_len == float('inf'):
                     count = sum(1 for length in self.content_lengths if length >= min_len)
-                    f.write(f"{label} ({min_len}+): {count} chunks\n")
+                    percentage = (count / total_chunks) * 100
+                    f.write(f"{label} ({min_len}+): {count} chunks ({percentage:.2f}%)\n")
                 else:
-                    count = sum(1 for length in self.content_lengths 
+                    count = sum(1 for length in self.content_lengths
                                if min_len <= length <= max_len)
-                    f.write(f"{label} ({min_len}-{max_len}): {count} chunks\n")
+                    percentage = (count / total_chunks) * 100
+                    f.write(f"{label} ({min_len}-{max_len}): {count} chunks ({percentage:.2f}%)\n")
             
             # 添加最长和最短的几个示例
             f.write("\n最长内容示例 (前5个):\n")

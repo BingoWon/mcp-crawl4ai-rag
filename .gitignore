@@ -10,3 +10,4 @@ tests/output/*
 *.txt
 *.log*
 *.json
+*.png

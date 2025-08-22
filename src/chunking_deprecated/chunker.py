@@ -25,11 +25,19 @@ Apple文档专用智能分块实现 - 统一JSON格式输出
 - 第二优先级：H2分割（≥2个H2标题）
 - 第三优先级：H3分割（≥2个H3标题）
 
-【第四优先级：完整内容】
-- 触发条件：短文档（≤TARGET_CHUNK_SIZE字符）
-- 处理逻辑：按第一个H标题分离context和content，输出JSON格式
-- 输出格式：{"context": "第一个H标题之前的内容", "content": "从第一个H标题开始的内容"}
-- 特殊情况：无H标题时context为空，content为全文
+【第四优先级：智能换行分割】
+- 触发条件：长文档且前三个优先级都不符合时（无足够H1/H2/H3标题）
+- 处理逻辑：动态计算chunk大小，按换行符边界进行分割
+- 算法步骤：
+  1. 计算chunk数量：总长度 ÷ TARGET_CHUNK_SIZE，向下取整
+  2. 计算修正chunk大小：总长度 ÷ chunk数量
+  3. 在修正大小附近找最近的换行符作为分割点
+- 输出格式：{"context": "第一个H标题之前的内容", "content": "分割后的内容"}
+
+【短文档特殊处理】
+- 触发条件：文档长度 ≤ TARGET_CHUNK_SIZE
+- 处理逻辑：直接返回完整内容，不进行分割
+- 输出格式：{"context": "第一个H标题之前的内容", "content": "完整内容"}
 
 === 极致简化的设计原则 ===
 
@@ -86,8 +94,8 @@ class SmartChunker:
     """
 
     # 超参数定义
-    TARGET_CHUNK_SIZE = 5000
-    MAX_CHUNK_SIZE = 6000
+    TARGET_CHUNK_SIZE = 2500
+    MAX_CHUNK_SIZE = 3000
 
     def __init__(self):
         pass
@@ -100,7 +108,7 @@ class SmartChunker:
             return []
 
         if len(text) <= self.TARGET_CHUNK_SIZE:
-            logger.info(f"文本长度小于{self.TARGET_CHUNK_SIZE}字符，使用第四优先级")
+            logger.info(f"文本长度小于{self.TARGET_CHUNK_SIZE}字符，直接返回完整内容")
             chunks = self._chunk_complete(text)
             return chunks
 
@@ -110,9 +118,9 @@ class SmartChunker:
             if chunks:
                 return chunks
 
-        # 第四优先级：完整内容
-        logger.info("返回完整内容JSON格式")
-        chunks = self._chunk_complete(text)
+        # 第四优先级：智能换行分割
+        logger.info("使用第四优先级：智能换行分割")
+        chunks = self._chunk_by_newlines(text)
         return chunks
 
     def _chunk_by_header(self, text: str, level: int) -> List[str]:
@@ -216,6 +224,99 @@ class SmartChunker:
             "content": content
         }
         return [json.dumps(chunk, ensure_ascii=False, indent=2)]
+
+    def _chunk_by_newlines(self, text: str) -> List[str]:
+        """第四优先级：智能换行分割 - 参考YouTube chunker算法"""
+        # 先分离context和content
+        context, content = self._split_by_first_header(text)
+
+        if not content.strip():
+            # 如果没有content，返回完整内容
+            chunk = {
+                "context": context,
+                "content": content
+            }
+            return [json.dumps(chunk, ensure_ascii=False, indent=2)]
+
+        # 动态计算chunk大小（参考YouTube chunker算法）
+        total_length = len(content)
+        chunk_count = max(1, total_length // self.TARGET_CHUNK_SIZE)  # 至少1个chunk
+        adjusted_chunk_size = total_length // chunk_count
+
+        logger.info(f"智能换行分割: 总长度={total_length}, chunk数量={chunk_count}, 调整后chunk大小={adjusted_chunk_size}")
+
+        chunks = []
+        position = 0
+        current_chunk_index = 0
+
+        while position < len(content) and current_chunk_index < chunk_count:
+            # 计算这个chunk的结束位置
+            chunk_end = self._find_newline_chunk_end(content, position, adjusted_chunk_size,
+                                                   current_chunk_index, chunk_count)
+
+            # 提取chunk内容
+            chunk_content = content[position:chunk_end].strip()
+
+            if chunk_content:  # 只有非空内容才添加
+                chunk = {
+                    "context": context,
+                    "content": chunk_content
+                }
+                chunk_json = json.dumps(chunk, ensure_ascii=False, indent=2)
+                chunks.append(chunk_json)
+
+            # 移动到下一个位置
+            position = chunk_end
+            current_chunk_index += 1
+
+        return chunks
+
+    def _find_newline_chunk_end(self, content: str, start_pos: int, chunk_size: int,
+                               current_chunk_index: int, total_chunk_count: int) -> int:
+        """找到基于换行符的chunk结束位置"""
+        # 如果是最后一个chunk，直接返回内容结尾
+        if current_chunk_index == total_chunk_count - 1:
+            return len(content)
+
+        # 如果剩余内容不足chunk_size字符，直接返回结尾
+        if start_pos + chunk_size >= len(content):
+            return len(content)
+
+        target_pos = start_pos + chunk_size
+
+        # 向前找最近的换行符
+        backward_pos = None
+        for i in range(target_pos, start_pos - 1, -1):  # 不能超过start_pos
+            if content[i] == '\n':
+                backward_pos = i + 1  # 换行符后的位置
+                break
+
+        # 向后找最近的换行符
+        forward_pos = None
+        for i in range(target_pos, len(content)):
+            if content[i] == '\n':
+                forward_pos = i + 1  # 换行符后的位置
+                break
+
+        # 选择距离最近的换行符
+        if backward_pos is None and forward_pos is None:
+            # 没找到换行符，返回内容结尾
+            return len(content)
+        elif backward_pos is None:
+            # 只有向后的换行符
+            return forward_pos
+        elif forward_pos is None:
+            # 只有向前的换行符
+            return backward_pos
+        else:
+            # 两个都有，选择距离最近的
+            backward_distance = target_pos - (backward_pos - 1)  # backward_pos已经+1了
+            forward_distance = (forward_pos - 1) - target_pos    # forward_pos已经+1了
+
+            if backward_distance <= forward_distance:
+                return backward_pos
+            else:
+                return forward_pos
 
     def _split_by_first_header(self, text: str) -> tuple[str, str]:
         """按第一个H标题分离context和content"""
