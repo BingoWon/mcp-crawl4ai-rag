@@ -79,8 +79,8 @@ SELECT 'max_parallel_maintenance_workers: ' || current_setting('max_parallel_mai
 SELECT 'work_mem: ' || current_setting('work_mem') as current_param;
 
 -- 设置优化参数（针对 4核6GB VPS）
-SET maintenance_work_mem = '2GB';
-SET max_parallel_maintenance_workers = 3;
+SET maintenance_work_mem = '4GB';
+SET max_parallel_maintenance_workers = 4;
 SET work_mem = '512MB';
 SET random_page_cost = 1.1;
 
@@ -100,8 +100,8 @@ SELECT 'Index creation started at: ' || NOW() as index_start_time;
 
 -- 创建 HNSW 索引
 -- 使用 halfvec_cosine_ops 因为我们的 embedding 是 halfvec(2560) 类型
-CREATE INDEX CONCURRENTLY idx_chunks_embedding_hnsw 
-ON chunks USING hnsw (embedding halfvec_cosine_ops) 
+CREATE INDEX CONCURRENTLY idx_chunks_embedding_hnsw
+ON chunks USING hnsw (embedding halfvec_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
 SELECT 'Index creation completed at: ' || NOW() as index_end_time;

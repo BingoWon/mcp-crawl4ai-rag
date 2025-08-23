@@ -188,7 +188,7 @@ async def get_chunks(
         client = await get_db_client()
 
         # 参数验证
-        sort_column = sort if sort in APIConfig.VALID_CHUNK_SORTS else "created_at"
+        sort_column = sort if sort in APIConfig.VALID_CHUNK_SORTS else "url"
         sort_order = "ASC" if order.lower() == "asc" else "DESC"
         offset = (page - 1) * size
 

@@ -49,53 +49,100 @@ show_progress_bar() {
     printf "] %d%% (%d/%d)" "$percentage" "$current" "$total"
 }
 
-# 实时监控索引创建进度
+# 实时监控索引创建进度 - 增强版
 monitor_index_progress() {
     local log_file="$1"
+    local psql_pid="$2"
     local start_time=$(date +%s)
-    
+    local last_log_size=0
+    local consecutive_no_progress=0
+
     log_progress "开始监控索引创建进度..."
-    
+
     while true; do
-        # 检查进程是否还在运行
-        if ! pgrep -f "psql.*vps_create_hnsw.sql" > /dev/null; then
+        # 检查psql进程是否还在运行（使用PID而不是进程名匹配）
+        if ! kill -0 "$psql_pid" 2>/dev/null; then
+            log_info "检测到psql进程已结束 (PID: $psql_pid)"
             break
         fi
-        
+
         # 当前时间和运行时长
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
         local hours=$((elapsed / 3600))
         local minutes=$(((elapsed % 3600) / 60))
         local seconds=$((elapsed % 60))
-        
-        # 检查数据库中的活动查询
-        local active_queries=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "
-        SELECT COUNT(*) FROM pg_stat_activity 
-        WHERE state = 'active' 
-        AND (query ILIKE '%CREATE INDEX%' OR query ILIKE '%hnsw%');" 2>/dev/null || echo "0")
-        
-        # 检查系统资源使用
-        local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' 2>/dev/null || echo "N/A")
-        local mem_usage=$(free | awk 'NR==2{printf "%.1f", $3*100/$2}' 2>/dev/null || echo "N/A")
-        
-        # 清除当前行并显示进度信息
-        echo -ne "\033[2K\r"
-        printf "${GREEN}[PROGRESS]${NC} %02d:%02d:%02d | 活动查询: %s | CPU: %s%% | 内存: %s%% | 状态: 索引创建中..." \
-               "$hours" "$minutes" "$seconds" "$active_queries" "$cpu_usage" "$mem_usage"
-        
-        # 检查日志文件最新内容
+
+        # 检查数据库连接和活动查询
+        local db_status="连接失败"
+        local active_queries="0"
+        local index_exists="未知"
+
+        # 尝试连接数据库获取详细状态
+        if db_result=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "
+            SELECT
+                COUNT(*) FILTER (WHERE state = 'active' AND (query ILIKE '%CREATE INDEX%' OR query ILIKE '%hnsw%')) as active_queries,
+                CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename = 'chunks' AND indexname = 'idx_chunks_embedding_hnsw')
+                     THEN '已存在' ELSE '创建中' END as index_status
+        " 2>/dev/null); then
+            db_status="连接正常"
+            active_queries=$(echo "$db_result" | awk '{print $1}')
+            index_exists=$(echo "$db_result" | awk '{print $2}')
+        fi
+
+        # 检查系统资源使用（兼容Linux系统）
+        local cpu_usage="N/A"
+        local mem_usage="N/A"
+
+        # Linux系统资源监控
+        if command -v top >/dev/null 2>&1 && command -v free >/dev/null 2>&1; then
+            cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' 2>/dev/null || echo "N/A")
+            mem_usage=$(free | awk 'NR==2{printf "%.1f", $3*100/$2}' 2>/dev/null || echo "N/A")
+        fi
+
+        # 检查日志文件变化
+        local log_status="无日志"
+        local current_log_size=0
         if [ -f "$log_file" ]; then
-            local last_line=$(tail -1 "$log_file" 2>/dev/null)
-            if [[ "$last_line" == *"Index creation completed"* ]]; then
+            current_log_size=$(wc -l < "$log_file" 2>/dev/null || echo "0")
+            if [ "$current_log_size" -gt "$last_log_size" ]; then
+                log_status="日志更新"
+                consecutive_no_progress=0
+                last_log_size=$current_log_size
+            else
+                consecutive_no_progress=$((consecutive_no_progress + 1))
+                log_status="无新日志(${consecutive_no_progress})"
+            fi
+
+            # 检查日志中的完成信号
+            local last_lines=$(tail -5 "$log_file" 2>/dev/null)
+            if [[ "$last_lines" == *"Index creation completed"* ]] || [[ "$last_lines" == *"HNSW Index Creation Process Completed"* ]]; then
                 echo -e "\n${GREEN}[PROGRESS]${NC} 检测到索引创建完成信号！"
                 break
             fi
         fi
-        
+
+        # 显示详细进度信息（每行显示，不覆盖）
+        echo "${GREEN}[PROGRESS]${NC} $(date '+%H:%M:%S') | 运行时长: ${hours}h${minutes}m${seconds}s"
+        echo "  数据库: $db_status | 活动查询: $active_queries | 索引状态: $index_exists"
+        echo "  系统: CPU ${cpu_usage}% | 内存 ${mem_usage}% | 日志: $log_status (${current_log_size}行)"
+
+        # 如果索引已存在，说明创建完成
+        if [[ "$index_exists" == "已存在" ]]; then
+            echo -e "${GREEN}[PROGRESS]${NC} 检测到索引已创建完成！"
+            break
+        fi
+
+        # 如果长时间没有进度且没有活动查询，可能出现问题
+        if [ "$consecutive_no_progress" -gt 30 ] && [ "$active_queries" -eq 0 ]; then
+            echo -e "${YELLOW}[WARNING]${NC} 长时间无进度且无活动查询，可能出现问题"
+            echo "  建议检查错误日志: $ERROR_LOG"
+        fi
+
+        echo "----------------------------------------"
         sleep 10
     done
-    
+
     echo ""  # 换行
 }
 
@@ -276,17 +323,38 @@ PSQL_PID=$!
 
 show_stage_progress "索引创建监控" "实时监控索引创建进度" 6 7
 
-# 启动进度监控
-monitor_index_progress "$LOG_FILE"
+# 启动进度监控（传递psql进程ID）
+monitor_index_progress "$LOG_FILE" "$PSQL_PID"
 
 # 等待 psql 进程完成
 wait $PSQL_PID
 EXIT_CODE=$(cat /tmp/psql_exit_code 2>/dev/null || echo "1")
 rm -f /tmp/psql_exit_code
 
-# 显示结束时间
+# 显示结束时间和详细状态
 END_TIME=$(date)
 log_info "结束时间: $END_TIME"
+
+# 分析日志文件内容
+if [ -f "$LOG_FILE" ]; then
+    log_info "分析日志文件内容..."
+    local log_lines=$(wc -l < "$LOG_FILE")
+    log_info "日志文件总行数: $log_lines"
+
+    # 显示日志文件的最后几行
+    log_info "日志文件最后10行:"
+    tail -10 "$LOG_FILE" | while IFS= read -r line; do
+        log_info "  $line"
+    done
+fi
+
+# 检查错误日志
+if [ -f "$ERROR_LOG" ] && [ -s "$ERROR_LOG" ]; then
+    log_warning "发现错误日志内容:"
+    cat "$ERROR_LOG" | while IFS= read -r line; do
+        log_error "  $line"
+    done
+fi
 
 # ============================================================================
 # 检查结果

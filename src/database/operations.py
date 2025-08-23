@@ -201,7 +201,7 @@ class DatabaseOperations:
             SELECT id, url, content
             FROM chunks
             WHERE content ILIKE $1
-            ORDER BY created_at DESC
+            ORDER BY url DESC
             LIMIT $2
         """, f'%{query}%', match_count)
 
