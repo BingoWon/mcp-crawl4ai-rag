@@ -232,3 +232,34 @@ class DatabaseOperations:
             "DELETE FROM chunks WHERE url = $1", url
         )
 
+    # ============================================================================
+    # 批量更新业务逻辑
+    # ============================================================================
+
+    async def reset_apple_pages_for_bulk_update(self) -> int:
+        """重置Apple文档的processed_at字段为NULL，用于批量重新处理
+
+        这个方法专门用于重置Apple文档的处理状态，使其能够被重新处理。
+        主要用于：
+        - 更新chunking算法后重新处理所有文档
+        - 修复处理错误后的批量重置
+        - 系统维护和数据更新
+
+        Returns:
+            int: 重置的记录数量
+        """
+        # 只重置Apple文档的processed_at字段
+        result = await self.client.execute_command("""
+            UPDATE pages
+            SET processed_at = NULL
+            WHERE (url = 'https://developer.apple.com/documentation'
+                   OR url LIKE 'https://developer.apple.com/documentation/%')
+            AND processed_at IS NOT NULL
+        """)
+
+        # 解析更新的记录数
+        # PostgreSQL返回格式: "UPDATE n" 其中n是更新的行数
+        if result and result.startswith("UPDATE "):
+            return int(result.split()[1])
+        return 0
+

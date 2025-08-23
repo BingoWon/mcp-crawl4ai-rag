@@ -46,7 +46,7 @@ class BulkChunkingUpdater:
 
     def __init__(self):
         # 超参数配置
-        self.batch_size = int(os.getenv("BULK_UPDATE_BATCH_SIZE", "50"))
+        self.batch_size = int(os.getenv("BULK_UPDATE_BATCH_SIZE", "500"))
 
         # 核心组件
         self.db_client = None
