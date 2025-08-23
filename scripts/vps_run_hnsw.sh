@@ -31,6 +31,112 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
+log_progress() {
+    echo -e "${GREEN}[PROGRESS]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"
+}
+
+# 进度监控函数
+show_progress_bar() {
+    local current=$1
+    local total=$2
+    local width=50
+    local percentage=$((current * 100 / total))
+    local filled=$((current * width / total))
+    
+    printf "\r["
+    for ((i=0; i<filled; i++)); do printf "█"; done
+    for ((i=filled; i<width; i++)); do printf "░"; done
+    printf "] %d%% (%d/%d)" "$percentage" "$current" "$total"
+}
+
+# 实时监控索引创建进度
+monitor_index_progress() {
+    local log_file="$1"
+    local start_time=$(date +%s)
+    
+    log_progress "开始监控索引创建进度..."
+    
+    while true; do
+        # 检查进程是否还在运行
+        if ! pgrep -f "psql.*vps_create_hnsw.sql" > /dev/null; then
+            break
+        fi
+        
+        # 当前时间和运行时长
+        local current_time=$(date +%s)
+        local elapsed=$((current_time - start_time))
+        local hours=$((elapsed / 3600))
+        local minutes=$(((elapsed % 3600) / 60))
+        local seconds=$((elapsed % 60))
+        
+        # 检查数据库中的活动查询
+        local active_queries=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "
+        SELECT COUNT(*) FROM pg_stat_activity 
+        WHERE state = 'active' 
+        AND (query ILIKE '%CREATE INDEX%' OR query ILIKE '%hnsw%');" 2>/dev/null || echo "0")
+        
+        # 检查系统资源使用
+        local cpu_usage=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | sed 's/%us,//' 2>/dev/null || echo "N/A")
+        local mem_usage=$(free | awk 'NR==2{printf "%.1f", $3*100/$2}' 2>/dev/null || echo "N/A")
+        
+        # 清除当前行并显示进度信息
+        echo -ne "\033[2K\r"
+        printf "${GREEN}[PROGRESS]${NC} %02d:%02d:%02d | 活动查询: %s | CPU: %s%% | 内存: %s%% | 状态: 索引创建中..." \
+               "$hours" "$minutes" "$seconds" "$active_queries" "$cpu_usage" "$mem_usage"
+        
+        # 检查日志文件最新内容
+        if [ -f "$log_file" ]; then
+            local last_line=$(tail -1 "$log_file" 2>/dev/null)
+            if [[ "$last_line" == *"Index creation completed"* ]]; then
+                echo -e "\n${GREEN}[PROGRESS]${NC} 检测到索引创建完成信号！"
+                break
+            fi
+        fi
+        
+        sleep 10
+    done
+    
+    echo ""  # 换行
+}
+
+# 阶段性进度显示
+show_stage_progress() {
+    local stage="$1"
+    local message="$2"
+    local stage_num="$3"
+    local total_stages="$4"
+    
+    echo ""
+    echo "============================================================================"
+    printf "${BLUE}[阶段 %d/%d]${NC} %s\n" "$stage_num" "$total_stages" "$stage"
+    echo "============================================================================"
+    log_progress "$message"
+    echo ""
+}
+
+# 获取数据库信息用于进度估算
+get_database_info() {
+    log_info "获取数据库信息用于进度估算..."
+    
+    local total_chunks=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM chunks;" 2>/dev/null | tr -d ' ')
+    local embedding_chunks=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM chunks WHERE embedding IS NOT NULL;" 2>/dev/null | tr -d ' ')
+    
+    log_info "数据库统计: 总记录 ${total_chunks} 条，有embedding ${embedding_chunks} 条"
+    
+    # 基于数据量估算时间（每10万条约1小时）
+    local estimated_hours=$((embedding_chunks / 100000 + 1))
+    if [ "$estimated_hours" -gt 6 ]; then
+        estimated_hours=6
+    fi
+    
+    log_info "预估索引创建时间: ${estimated_hours}-$((estimated_hours + 2)) 小时"
+    
+    # 设置全局变量供其他函数使用
+    TOTAL_CHUNKS="$total_chunks"
+    EMBEDDING_CHUNKS="$embedding_chunks"
+    ESTIMATED_HOURS="$estimated_hours"
+}
+
 # ============================================================================
 # 数据库配置 - VPS 本地连接
 # ============================================================================
@@ -45,7 +151,7 @@ DB_PASSWORD="${DB_PASSWORD:-}"  # 从环境变量读取，避免硬编码
 # 检查环境
 # ============================================================================
 
-log_info "开始 VPS HNSW 索引创建流程"
+show_stage_progress "环境检查" "开始 VPS HNSW 索引创建流程" 1 7
 
 # 检查是否在持久会话中
 if [ -n "$STY" ]; then
@@ -77,13 +183,16 @@ log_success "环境检查完成"
 # 测试数据库连接
 # ============================================================================
 
-log_info "测试数据库连接..."
+show_stage_progress "数据库连接测试" "验证数据库连接和获取统计信息" 2 7
 
 # 测试连接
 PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1
 
 if [ $? -eq 0 ]; then
     log_success "数据库连接测试成功"
+    
+    # 获取数据库信息用于进度估算
+    get_database_info
 else
     log_error "数据库连接失败，请检查："
     log_error "1. PostgreSQL 服务是否运行: sudo systemctl status postgresql"
@@ -96,7 +205,7 @@ fi
 # 检查系统资源
 # ============================================================================
 
-log_info "检查系统资源..."
+show_stage_progress "系统资源检查" "评估内存、磁盘和CPU资源" 3 7
 
 # 检查内存
 TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
@@ -122,6 +231,8 @@ fi
 # 创建日志目录和文件
 # ============================================================================
 
+show_stage_progress "日志准备" "创建日志目录和文件" 4 7
+
 LOG_DIR="hnsw_logs"
 mkdir -p "$LOG_DIR"
 
@@ -136,25 +247,42 @@ log_info "错误日志: $ERROR_LOG"
 # 执行索引创建
 # ============================================================================
 
-log_info "开始执行 HNSW 索引创建..."
-log_warning "此过程可能需要 2-6 小时，请保持连接稳定"
+show_stage_progress "索引创建准备" "启动索引创建进程" 5 7
+
+log_warning "预估时间: ${ESTIMATED_HOURS}-$((ESTIMATED_HOURS + 2)) 小时"
+log_warning "数据量: ${EMBEDDING_CHUNKS} 条记录需要建立索引"
+log_info "建议操作: 使用 Ctrl+A D 分离screen会话，稍后重连查看"
 
 # 显示开始时间
 START_TIME=$(date)
 log_info "开始时间: $START_TIME"
 
-# 执行 SQL 脚本
-PGPASSWORD="$DB_PASSWORD" psql \
-    -h "$DB_HOST" \
-    -p "$DB_PORT" \
-    -U "$DB_USER" \
-    -d "$DB_NAME" \
-    -f "vps_create_hnsw.sql" \
-    -v ON_ERROR_STOP=1 \
-    --echo-queries \
-    > "$LOG_FILE" 2> "$ERROR_LOG"
+# 在后台执行 SQL 脚本并监控进度
+{
+    PGPASSWORD="$DB_PASSWORD" psql \
+        -h "$DB_HOST" \
+        -p "$DB_PORT" \
+        -U "$DB_USER" \
+        -d "$DB_NAME" \
+        -f "vps_create_hnsw.sql" \
+        -v ON_ERROR_STOP=1 \
+        --echo-queries \
+        > "$LOG_FILE" 2> "$ERROR_LOG"
+    echo $? > /tmp/psql_exit_code
+} &
 
-EXIT_CODE=$?
+# 获取 psql 进程ID
+PSQL_PID=$!
+
+show_stage_progress "索引创建监控" "实时监控索引创建进度" 6 7
+
+# 启动进度监控
+monitor_index_progress "$LOG_FILE"
+
+# 等待 psql 进程完成
+wait $PSQL_PID
+EXIT_CODE=$(cat /tmp/psql_exit_code 2>/dev/null || echo "1")
+rm -f /tmp/psql_exit_code
 
 # 显示结束时间
 END_TIME=$(date)
@@ -163,6 +291,8 @@ log_info "结束时间: $END_TIME"
 # ============================================================================
 # 检查结果
 # ============================================================================
+
+show_stage_progress "结果验证" "验证索引创建结果" 7 7
 
 if [ $EXIT_CODE -eq 0 ]; then
     log_success "🎉 HNSW 索引创建完成！"
