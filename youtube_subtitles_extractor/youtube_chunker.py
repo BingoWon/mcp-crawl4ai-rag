@@ -1,36 +1,45 @@
 #!/usr/bin/env python3
 """
-YouTube字幕专用分块器
+YouTube字幕专用分块器 - 真正动态自适应策略
 
-极简化算法：
-1. 从位置0开始，向后取2500字符
-2. 从第2500字符位置开始，找第一个英文句号（.）
-3. 从起始位置到句号位置+1 = 一个chunk
-4. JSON包装：{"context": "视频标题", "content": "chunk内容"}
-5. 下一个chunk从句号后开始，重复流程
+核心算法：
+1. 动态计算目标chunk数量：target_chunk_count = 总长度 ÷ 2500
+2. 每次分割前重新计算：dynamic_size = 剩余长度 ÷ 剩余chunks数
+3. 在目标位置附近寻找最近的英文句号（.）作为分割点
+4. JSON包装：{"title": "视频标题", "content": "chunk内容"}
+5. 真正自适应：每个chunk大小根据剩余内容动态调整
 """
 
 import json
-import sys
 from pathlib import Path
 from typing import List, Dict, Any
 
 
 class YouTubeChunker:
-    """YouTube字幕专用分块器"""
+    """YouTube字幕专用分块器 - 智能分割控制"""
+
+    # 核心配置常量
+    TARGET_CHUNK_SIZE = 2500
+    MAX_CHUNK_SIZE = 3000
+    SEARCH_RANGE = 250
 
     def __init__(self):
         pass
     
     def chunk_youtube_subtitle(self, video_data: Dict[str, str]) -> List[Dict[str, str]]:
         """
-        对YouTube字幕进行分块 - 动态chunk大小策略
+        对YouTube字幕进行分块 - 真正动态自适应策略
+
+        核心特性：
+        - 每次分割前重新计算剩余长度和剩余chunks数
+        - 动态调整chunk大小以实现均匀分布
+        - 保持句号(.)分割点的语义完整性
 
         Args:
             video_data: {"context": "视频标题", "content": "完整字幕"}
 
         Returns:
-            List of chunks: [{"context": "标题", "content": "分块内容"}, ...]
+            List of chunks: [{"title": "标题", "content": "分块内容"}, ...]
         """
         context = video_data["context"]
         content = video_data["content"]
@@ -38,27 +47,40 @@ class YouTubeChunker:
         if not content.strip():
             return []
 
-        # 动态计算chunk大小
+        # 智能分割控制：小于MAX_CHUNK_SIZE不需要分割
         total_length = len(content)
-        chunk_count = max(1, total_length // 2500)  # 至少1个chunk
-        chunk_size = total_length // chunk_count
+        if total_length <= self.MAX_CHUNK_SIZE:
+            return [{
+                "title": context,
+                "content": content
+            }]
 
-        print(f"📊 动态分块计算: 总长度={total_length}, chunk数量={chunk_count}, chunk大小={chunk_size}")
+        # 动态计算目标chunk数量 - 使用四舍五入确保合理分割
+        # 例如：4900长度 ÷ 2500 = 1.96 → round(1.96) = 2个chunks
+        # 避免整数除法向下取整导致的chunk过大问题
+        target_chunk_count = max(1, round(total_length / self.TARGET_CHUNK_SIZE))
+
+
 
         chunks = []
         position = 0
         current_chunk_index = 0
 
-        while position < len(content) and current_chunk_index < chunk_count:
+        while position < len(content) and current_chunk_index < target_chunk_count:
+            # 真正的动态自适应：每次重新计算剩余长度和chunk大小
+            remaining_length = len(content) - position
+            remaining_chunks = target_chunk_count - current_chunk_index
+            dynamic_chunk_size = remaining_length // remaining_chunks
+
             # 计算这个chunk的结束位置
-            chunk_end = self._find_chunk_end(content, position, chunk_size, current_chunk_index, chunk_count)
+            chunk_end = self._find_chunk_end(content, position, dynamic_chunk_size, current_chunk_index, target_chunk_count)
 
             # 提取chunk内容
             chunk_content = content[position:chunk_end].strip()
 
             if chunk_content:  # 只有非空内容才添加
                 chunk = {
-                    "context": context,
+                    "title": context,
                     "content": chunk_content
                 }
                 chunks.append(chunk)
@@ -69,64 +91,55 @@ class YouTubeChunker:
 
         return chunks
     
-    def _find_chunk_end(self, content: str, start_pos: int, chunk_size: int,
-                        current_chunk_index: int, total_chunk_count: int) -> int:
+    def _find_chunk_end(self, content: str, start_pos: int, dynamic_chunk_size: int,
+                        current_chunk_index: int, target_chunk_count: int) -> int:
         """
         找到chunk的结束位置 - 最后chunk特殊处理 + 最近句号策略
 
         Args:
             content: 完整内容
             start_pos: 开始位置
-            chunk_size: 动态计算的chunk大小
+            dynamic_chunk_size: 动态自适应计算的chunk大小
             current_chunk_index: 当前chunk索引
-            total_chunk_count: 总chunk数量
+            target_chunk_count: 目标chunk数量
 
         Returns:
             chunk结束位置
         """
         # 如果是最后一个chunk，直接返回内容结尾
-        if current_chunk_index == total_chunk_count - 1:
+        if current_chunk_index == target_chunk_count - 1:
             return len(content)
 
-        # 如果剩余内容不足chunk_size字符，直接返回结尾
-        if start_pos + chunk_size >= len(content):
+        # 如果剩余内容不足MAX_CHUNK_SIZE字符，直接返回结尾
+        remaining_content_length = len(content) - start_pos
+        if remaining_content_length <= self.MAX_CHUNK_SIZE:
             return len(content)
 
-        target_pos = start_pos + chunk_size
+        target_pos = start_pos + dynamic_chunk_size
 
-        # 向前找最近的句号
-        backward_pos = None
-        for i in range(target_pos, start_pos - 1, -1):  # 不能超过start_pos
+        # 智能搜索：在SEARCH_RANGE范围内寻找最佳句号分割点
+        search_start = max(start_pos, target_pos - self.SEARCH_RANGE)
+        search_end = min(len(content), target_pos + self.SEARCH_RANGE)
+
+        best_pos = target_pos
+        best_distance = float('inf')
+
+        # 在搜索范围内寻找句号
+        for i in range(search_start, search_end):
             if content[i] == '.':
-                backward_pos = i + 1  # 包含句号
-                break
+                split_pos = i + 1  # 包含句号
+                distance = abs(split_pos - target_pos)
 
-        # 向后找最近的句号
-        forward_pos = None
-        for i in range(target_pos, len(content)):
-            if content[i] == '.':
-                forward_pos = i + 1  # 包含句号
-                break
+                # 选择距离目标位置最近的句号
+                if distance < best_distance:
+                    best_distance = distance
+                    best_pos = split_pos
 
-        # 选择距离最近的句号
-        if backward_pos is None and forward_pos is None:
-            # 没找到句号，返回内容结尾
-            return len(content)
-        elif backward_pos is None:
-            # 只有向后的句号
-            return forward_pos
-        elif forward_pos is None:
-            # 只有向前的句号
-            return backward_pos
+        # 如果找到了句号分割点，使用它；否则使用目标位置
+        if best_distance < float('inf'):
+            return best_pos
         else:
-            # 两个都有，选择距离最近的
-            backward_distance = target_pos - (backward_pos - 1)  # backward_pos已经+1了
-            forward_distance = (forward_pos - 1) - target_pos    # forward_pos已经+1了
-
-            if backward_distance <= forward_distance:
-                return backward_pos
-            else:
-                return forward_pos
+            return min(target_pos, len(content))
     
     def chunk_to_json_strings(self, chunks: List[Dict[str, str]]) -> List[str]:
         """
@@ -166,7 +179,7 @@ class YouTubeChunker:
             "max_length": max(lengths),
             "avg_length": sum(lengths) / len(lengths),
             "total_length": sum(lengths),
-            "context": chunks[0]["context"]  # 所有chunks的context应该相同
+            "title": chunks[0]["title"]  # 所有chunks的title应该相同
         }
         
         return stats
@@ -246,10 +259,10 @@ def test_youtube_chunker():
                 print(f"   详细分解:")
                 for i, (chunk, json_str) in enumerate(zip(chunks[:2], json_chunks[:2])):
                     content_len = len(chunk["content"])
-                    context_len = len(chunk["context"])
+                    title_len = len(chunk["title"])
                     json_len = len(json_str)
-                    overhead = json_len - content_len - context_len
-                    print(f"     Chunk {i+1}: content={content_len}, context={context_len}, JSON总长={json_len}, 开销={overhead}")
+                    overhead = json_len - content_len - title_len
+                    print(f"     Chunk {i+1}: content={content_len}, title={title_len}, JSON总长={json_len}, 开销={overhead}")
 
             # 保存测试结果（只保存前3个文件的详细结果）
             if total_videos <= 3:

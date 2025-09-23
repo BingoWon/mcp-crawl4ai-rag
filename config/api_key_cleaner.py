@@ -196,12 +196,6 @@ class APIKeyManager:
             return False
         
         try:
-            # 备份原文件
-            backup_file = self.keys_file.with_suffix('.txt.backup')
-            if self.keys_file.exists():
-                self.keys_file.rename(backup_file)
-                logger.info(f"📋 原文件已备份到: {backup_file}")
-            
             # 写入有效keys
             with open(self.keys_file, 'w', encoding='utf-8') as f:
                 for key in self.valid_keys:

@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
-from datetime import datetime
+
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 load_dotenv(project_root / ".env")
 
 from src.database import create_database_client
-from src.database.operations import DatabaseOperations
+
 from src.embedding import get_embedder
 from src.embedding.providers import SiliconFlowProvider
 from src.utils.logger import setup_logger
@@ -65,11 +65,14 @@ class YouTubeProcessor:
         logger.info(f"📊 获取未处理的YouTube视频数据，限制: {limit}")
         
         query = """
-            SELECT url, content 
-            FROM pages 
-            WHERE url LIKE 'https://www.youtube.com/watch?v=%' 
-            AND processed_at IS NULL
-            ORDER BY created_at ASC
+            SELECT p.url, p.content
+            FROM pages p
+            LEFT JOIN chunks c ON p.url = c.url
+            WHERE p.url LIKE 'https://www.youtube.com/watch?v=%'
+            AND p.content IS NOT NULL
+            AND p.content != ''
+            AND c.url IS NULL
+            ORDER BY p.created_at ASC
             LIMIT $1
         """
         
@@ -87,12 +90,12 @@ class YouTubeProcessor:
         logger.info(f"✅ 获取到 {len(results)} 个有效YouTube视频")
         return results
 
-    async def _batch_embedding(self, json_chunks: List[str]) -> List[List[float]]:
+    async def _batch_embedding(self, chunks: List[Dict[str, str]]) -> List[List[float]]:
         """
-        批量embedding处理 - 使用SiliconFlow API批量接口
+        批量embedding处理 - 对 title + "\n\n" + content 做embedding
 
         Args:
-            json_chunks: JSON字符串列表
+            chunks: chunk字典列表，格式：[{"title": "标题", "content": "内容"}, ...]
 
         Returns:
             embedding列表，失败的为None
@@ -104,14 +107,22 @@ class YouTubeProcessor:
             raise RuntimeError("Only SiliconFlow API embedding is allowed, local models are prohibited")
 
         try:
+            # 构建embedding文本：title + "\n\n" + content
+            embedding_texts = []
+            for chunk in chunks:
+                embedding_text = f"{chunk['title']}\n\n{chunk['content']}"
+                embedding_texts.append(embedding_text)
+
+            logger.info(f"📝 构建embedding文本: {len(embedding_texts)} 个")
+
             # 使用批量API调用 - 单次API请求处理所有文本
-            batch_embeddings = await embedder.encode_batch_concurrent(json_chunks)
+            batch_embeddings = await embedder.encode_batch_concurrent(embedding_texts)
             logger.info(f"✅ 批量embedding完成: {len(batch_embeddings)} 个")
             return batch_embeddings
         except Exception as e:
             logger.error(f"❌ 批量embedding失败: {e}")
             # 返回None列表，让上层处理失败情况
-            return [None] * len(json_chunks)
+            return [None] * len(chunks)
 
     async def process_single_video(self, url: str, video_data: Dict) -> Dict[str, Any]:
         """
@@ -136,10 +147,10 @@ class YouTubeProcessor:
             # 2. 转换为JSON字符串
             json_chunks = self.chunker.chunk_to_json_strings(chunks)
             logger.info(f"📦 生成 {len(json_chunks)} 个chunks")
-            
-            # 3. 批量embedding处理
+
+            # 3. 批量embedding处理 - 对 title + "\n\n" + content 做embedding
             logger.info("🧠 开始embedding处理...")
-            embeddings = await self._batch_embedding(json_chunks)
+            embeddings = await self._batch_embedding(chunks)
             
             # 过滤成功的embeddings
             valid_data = []
@@ -160,10 +171,7 @@ class YouTubeProcessor:
             # 4. 批量存储到chunks表
             logger.info(f"💾 存储 {len(valid_data)} 个chunks到数据库...")
             await self._store_chunks_batch(url, valid_data)
-            
-            # 5. 更新pages表processed_at
-            await self._mark_video_processed(url)
-            
+
             logger.info(f"✅ 视频处理完成: {len(valid_data)} chunks")
             
             return {
@@ -203,21 +211,7 @@ class YouTubeProcessor:
         await self.db_client.execute_many(insert_query, insert_data)
         logger.info(f"💾 成功存储 {len(insert_data)} 个chunks")
     
-    async def _mark_video_processed(self, url: str):
-        """
-        标记视频为已处理
-        
-        Args:
-            url: YouTube URL
-        """
-        update_query = """
-            UPDATE pages
-            SET processed_at = NOW()
-            WHERE url = $1
-        """
 
-        await self.db_client.execute_command(update_query, url)
-        logger.info(f"✅ 标记视频已处理: {url}")
     
     async def process_batch(self, batch_size: int = 5) -> Dict[str, Any]:
         """

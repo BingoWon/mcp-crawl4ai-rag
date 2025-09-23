@@ -136,13 +136,14 @@ class DatabaseOperations:
             try:
                 # 只处理Apple文档：包括根URL和子路径，排除YouTube视频URL
                 results = await conn.fetch("""
-                    SELECT url, content FROM pages
-                    WHERE processed_at IS NULL
-                    AND content IS NOT NULL
-                    AND content != ''
-                    AND (url = 'https://developer.apple.com/documentation'
-                         OR url LIKE 'https://developer.apple.com/documentation/%')
-                    ORDER BY created_at DESC
+                    SELECT p.url, p.content FROM pages p
+                    LEFT JOIN chunks c ON p.url = c.url
+                    WHERE c.url IS NULL
+                    AND p.content IS NOT NULL
+                    AND p.content != ''
+                    AND (p.url = 'https://developer.apple.com/documentation'
+                         OR p.url LIKE 'https://developer.apple.com/documentation/%')
+                    ORDER BY p.created_at DESC
                     LIMIT $1
                     FOR UPDATE SKIP LOCKED
                 """, batch_size)
@@ -153,16 +154,7 @@ class DatabaseOperations:
                 # 释放advisory lock
                 await conn.execute("SELECT pg_advisory_unlock($1)", lock_id)
 
-    async def mark_pages_processed(self, urls: List[str]) -> int:
-        """标记页面为已处理 - embedding完成后调用"""
-        if not urls:
-            return 0
 
-        await self.client.execute_many("""
-            UPDATE pages SET processed_at = NOW() WHERE url = $1
-        """, [(url,) for url in urls])
-
-        return len(urls)
     
     async def insert_chunks(self, data: List[Dict[str, Any]]) -> None:
         """Insert chunks data"""
@@ -236,30 +228,5 @@ class DatabaseOperations:
     # 批量更新业务逻辑
     # ============================================================================
 
-    async def reset_apple_pages_for_bulk_update(self) -> int:
-        """重置Apple文档的processed_at字段为NULL，用于批量重新处理
 
-        这个方法专门用于重置Apple文档的处理状态，使其能够被重新处理。
-        主要用于：
-        - 更新chunking算法后重新处理所有文档
-        - 修复处理错误后的批量重置
-        - 系统维护和数据更新
-
-        Returns:
-            int: 重置的记录数量
-        """
-        # 只重置Apple文档的processed_at字段
-        result = await self.client.execute_command("""
-            UPDATE pages
-            SET processed_at = NULL
-            WHERE (url = 'https://developer.apple.com/documentation'
-                   OR url LIKE 'https://developer.apple.com/documentation/%')
-            AND processed_at IS NOT NULL
-        """)
-
-        # 解析更新的记录数
-        # PostgreSQL返回格式: "UPDATE n" 其中n是更新的行数
-        if result and result.startswith("UPDATE "):
-            return int(result.split()[1])
-        return 0
 

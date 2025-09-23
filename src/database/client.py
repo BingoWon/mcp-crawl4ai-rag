@@ -107,31 +107,40 @@ class DatabaseClient:
             # Enable pgvector extension
             await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
-            # Create pages table - 添加processed_at字段
+            # Create pages table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS pages (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     url TEXT UNIQUE NOT NULL,
                     content TEXT DEFAULT '',
                     created_at TIMESTAMP DEFAULT NOW(),
-                    processed_at TIMESTAMP DEFAULT NULL
+                    raw_json JSONB,
+                    title TEXT,
+                    collect_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TIMESTAMP WITH TIME ZONE
                 )
             """)
 
-            # Create chunks table - 移除created_at字段
+            # Create chunks table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS chunks (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     url TEXT NOT NULL,
                     content TEXT NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
                     embedding halfvec(2560)
                 )
             """)
 
-            # Create indexes - 优化处理器查询
+            # Create indexes
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url)")
-            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_processing ON pages(processed_at, created_at DESC) WHERE processed_at IS NULL")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_collect_count_url ON pages(collect_count, url)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_created_at ON pages(created_at)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_title ON pages(title)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_updated_at ON pages(updated_at)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_pages_raw_json ON pages USING gin(raw_json)")
             await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_url ON chunks(url)")
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_created_at ON chunks(created_at)")
 
     async def execute_query(self, query: str, *args) -> List[Dict[str, Any]]:
         """Execute a query and return results as list of dicts"""

@@ -12,7 +12,6 @@ YouTube字幕处理最终验证脚本
 import asyncio
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
@@ -63,26 +62,28 @@ class FinalVerification:
     async def _get_total_stats(self):
         """获取总体统计"""
         query = """
-        SELECT 
+        SELECT
             COUNT(*) as total_videos,
-            COUNT(CASE WHEN processed_at IS NOT NULL THEN 1 END) as processed_videos,
-            COUNT(CASE WHEN processed_at IS NULL THEN 1 END) as unprocessed_videos,
-            COUNT(CASE WHEN content IS NOT NULL AND content != '' THEN 1 END) as videos_with_content
-        FROM pages 
-        WHERE url LIKE 'https://www.youtube.com/watch?v=%'
+            COUNT(CASE WHEN c.url IS NOT NULL THEN 1 END) as processed_videos,
+            COUNT(CASE WHEN c.url IS NULL THEN 1 END) as unprocessed_videos,
+            COUNT(CASE WHEN p.content IS NOT NULL AND p.content != '' THEN 1 END) as videos_with_content
+        FROM pages p
+        LEFT JOIN (SELECT DISTINCT url FROM chunks WHERE url LIKE 'https://www.youtube.com/watch?v=%') c ON p.url = c.url
+        WHERE p.url LIKE 'https://www.youtube.com/watch?v=%'
         """
-        
+
         result = await self.db_client.fetch_one(query)
         return dict(result)
     
     async def _get_unprocessed_videos(self):
         """获取未处理的视频"""
         query = """
-        SELECT url, content IS NOT NULL as has_content
-        FROM pages
-        WHERE url LIKE 'https://www.youtube.com/watch?v=%'
-        AND processed_at IS NULL
-        ORDER BY url
+        SELECT p.url, p.content IS NOT NULL as has_content
+        FROM pages p
+        LEFT JOIN chunks c ON p.url = c.url
+        WHERE p.url LIKE 'https://www.youtube.com/watch?v=%'
+        AND c.url IS NULL
+        ORDER BY p.url
         LIMIT 10
         """
 
@@ -200,7 +201,7 @@ async def main():
         sample_videos = await verifier._get_sample_processed_videos(5)
         for video in sample_videos:
             logger.info(f"   ✅ {video['url']} ({video['chunk_count']} chunks)")
-            logger.info(f"      处理时间: {video['processed_at']}")
+            logger.info(f"      首个chunk创建时间: {video['first_chunk_created']}")
         
         if is_complete:
             logger.info("\n🎊 恭喜！所有YouTube视频处理完成！")

@@ -19,7 +19,6 @@ import json
 import sys
 from pathlib import Path
 from typing import List, Dict, Tuple
-from datetime import datetime
 
 # 添加项目根目录到路径
 project_root = Path(__file__).parent.parent
@@ -81,20 +80,23 @@ class YouTubeDataImporter:
             
         return data_list
     
-    def prepare_database_records(self, data_list: List[Tuple[str, Dict]]) -> List[Tuple[str, str]]:
+    def prepare_database_records(self, data_list: List[Tuple[str, Dict]]) -> List[Tuple[str, str, str]]:
         """准备数据库插入记录"""
         logger.info("🔄 准备数据库记录...")
-        
+
         records = []
         for video_id, json_data in data_list:
             # 构造YouTube URL
             url = f"https://www.youtube.com/watch?v={video_id}"
-            
+
             # 将JSON数据转换为字符串
             content = json.dumps(json_data, ensure_ascii=False, indent=2)
-            
-            records.append((url, content))
-        
+
+            # 提取title字段
+            title = json_data.get("context", "")
+
+            records.append((url, content, title))
+
         logger.info(f"✅ 准备了 {len(records)} 条记录")
         return records
     
@@ -145,8 +147,8 @@ class YouTubeDataImporter:
             if new_records:
                 try:
                     await self.db_client.execute_many("""
-                        INSERT INTO pages (url, content, created_at, processed_at)
-                        VALUES ($1, $2, NOW(), NULL)
+                        INSERT INTO pages (url, content, title, created_at)
+                        VALUES ($1, $2, $3, NOW())
                     """, new_records)
                     
                     stats["inserted"] = len(new_records)
@@ -173,8 +175,8 @@ class YouTubeDataImporter:
             if new_records:
                 try:
                     await self.db_client.execute_many("""
-                        INSERT INTO pages (url, content, created_at, processed_at)
-                        VALUES ($1, $2, NOW(), NULL)
+                        INSERT INTO pages (url, content, title, created_at)
+                        VALUES ($1, $2, $3, NOW())
                     """, new_records)
                     stats["inserted"] = len(new_records)
                     logger.info(f"✅ 成功插入 {len(new_records)} 条新记录")
@@ -186,8 +188,8 @@ class YouTubeDataImporter:
             if existing_records:
                 try:
                     await self.db_client.execute_many("""
-                        UPDATE pages 
-                        SET content = $2, created_at = NOW(), processed_at = NULL
+                        UPDATE pages
+                        SET content = $2, title = $3, updated_at = NOW()
                         WHERE url = $1
                     """, existing_records)
                     stats["updated"] = len(existing_records)
@@ -210,8 +212,8 @@ class YouTubeDataImporter:
         
         # 获取样本数据
         sample_data = await self.db_client.fetch_all("""
-            SELECT url, LENGTH(content) as content_length, created_at, processed_at
-            FROM pages 
+            SELECT url, LENGTH(content) as content_length, created_at
+            FROM pages
             WHERE url LIKE 'https://www.youtube.com/watch?v=%'
             ORDER BY created_at DESC
             LIMIT 5

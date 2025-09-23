@@ -25,27 +25,72 @@ load_dotenv(project_root / ".env")
 
 from youtube_processor import YouTubeProcessor
 from src.utils.logger import setup_logger
+from src.database.client import DatabaseClient
 
 logger = setup_logger(__name__)
 
 
 class ContinuousYouTubeProcessor:
     """连续YouTube处理器"""
-    
+
     def __init__(self, batch_size: int = 20):
         self.batch_size = batch_size
         self.total_processed = 0
         self.total_chunks = 0
         self.total_failed = 0
         self.start_time = None
+
+    async def _clean_existing_youtube_chunks(self):
+        """删除所有现有的YouTube chunks记录"""
+        db_client = DatabaseClient()
+        try:
+            await db_client.initialize()
+
+            # 统计现有记录
+            count_query = "SELECT COUNT(*) as count FROM chunks WHERE url LIKE 'https://www.youtube.com/watch?v=%'"
+            result = await db_client.fetch_one(count_query)
+            existing_count = result['count']
+
+            if existing_count > 0:
+                logger.info(f"🗑️ 清理现有YouTube chunks: {existing_count:,} 条记录")
+
+                # 删除现有记录
+                delete_query = "DELETE FROM chunks WHERE url LIKE 'https://www.youtube.com/watch?v=%'"
+                await db_client.execute_command(delete_query)
+
+                logger.info("✅ YouTube chunks清理完成")
+            else:
+                logger.info("📊 没有现有的YouTube chunks需要清理")
+
+        finally:
+            await db_client.close()
         
+    async def _get_total_youtube_count(self) -> int:
+        """获取总的YouTube视频数量"""
+        db_client = DatabaseClient()
+        try:
+            await db_client.initialize()
+            query = "SELECT COUNT(*) as count FROM pages WHERE url LIKE 'https://www.youtube.com/watch?v=%' AND content IS NOT NULL AND content != ''"
+            result = await db_client.fetch_one(query)
+            return result['count']
+        finally:
+            await db_client.close()
+
     async def run_continuous_processing(self):
         """运行连续处理"""
         logger.info("🚀 开始YouTube字幕连续批量处理...")
         logger.info(f"📊 批处理大小: {self.batch_size}")
-        
+
+        # 清理现有的YouTube chunks
+        await self._clean_existing_youtube_chunks()
+
+        # 获取总数量用于进度跟踪
+        total_youtube_count = await self._get_total_youtube_count()
+        logger.info(f"📈 总共需要处理 {total_youtube_count} 个YouTube视频")
+
         self.start_time = datetime.now()
         batch_number = 1
+        global_processed_count = 0
         
         while True:
             logger.info("=" * 80)
@@ -63,12 +108,17 @@ class ContinuousYouTubeProcessor:
                 self.total_processed += result["processed"]
                 self.total_chunks += result["total_chunks"]
                 self.total_failed += result["failed"]
-                
+                global_processed_count += result["processed"]
+
+                # 计算全局进度
+                global_progress = (global_processed_count / total_youtube_count * 100) if total_youtube_count > 0 else 0
+
                 # 汇报批次结果
                 logger.info(f"📊 第 {batch_number} 批完成:")
                 logger.info(f"   本批处理: {result['processed']}/{result['total_videos']}")
                 logger.info(f"   本批chunks: {result['total_chunks']}")
                 logger.info(f"   本批成功率: {result['success_rate']:.1f}%")
+                logger.info(f"🎯 全局进度: {global_processed_count}/{total_youtube_count} ({global_progress:.1f}%)")
                 
                 # 汇报累计统计
                 elapsed_time = datetime.now() - self.start_time

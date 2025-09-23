@@ -79,7 +79,7 @@ SELECT 'max_parallel_maintenance_workers: ' || current_setting('max_parallel_mai
 SELECT 'work_mem: ' || current_setting('work_mem') as current_param;
 
 -- 设置优化参数（针对 4核6GB VPS）
-SET maintenance_work_mem = '4GB';
+SET maintenance_work_mem = '3GB';
 SET max_parallel_maintenance_workers = 4;
 SET work_mem = '512MB';
 SET random_page_cost = 1.1;

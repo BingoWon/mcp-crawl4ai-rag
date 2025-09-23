@@ -11,7 +11,7 @@ import sys
 import ast
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 from enum import Enum
 
 from fastapi import FastAPI, Query
@@ -116,10 +116,10 @@ async def get_pages(
         sort_column = sort if sort in APIConfig.VALID_PAGE_SORTS else "created_at"
         sort_order = "ASC" if order.lower() == "asc" else "DESC"
 
-        # 精简查询 - 只显示有content + 双重排序 + processed_at字段
+        # 精简查询 - 只显示有content + 双重排序
         if search:
             query = f"""
-                SELECT id, url, content, created_at, processed_at
+                SELECT id, url, content, created_at
                 FROM pages
                 WHERE content IS NOT NULL AND content != ''
                 AND (url ILIKE $1 OR content ILIKE $1)
@@ -129,7 +129,7 @@ async def get_pages(
             pages = await client.fetch_all(query, f"%{search}%", APIConfig.PAGE_LIMIT)
         else:
             query = f"""
-                SELECT id, url, content, created_at, processed_at
+                SELECT id, url, content, created_at
                 FROM pages
                 WHERE content IS NOT NULL AND content != ''
                 ORDER BY {sort_column} {sort_order}, url ASC

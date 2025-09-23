@@ -44,22 +44,24 @@ async def verify_results():
             logger.info(f'  URL: {chunk["url"]}')
             logger.info(f'  长度: {chunk["content_length"]}字符, embedding: {chunk["has_embedding"]}')
         
-        # 检查processed_at状态
+        # 检查处理状态（通过chunks表判断）
         logger.info('\n=== Pages处理状态验证 ===')
         processed_pages = await client.fetch_all('''
-            SELECT url, 
-                   CASE WHEN processed_at IS NOT NULL THEN 'PROCESSED' ELSE 'PENDING' END as status,
-                   processed_at
-            FROM pages 
-            WHERE url LIKE 'https://www.youtube.com/watch?v=%'
-            ORDER BY processed_at DESC NULLS LAST
+            SELECT p.url,
+                   CASE WHEN c.url IS NOT NULL THEN 'PROCESSED' ELSE 'PENDING' END as status,
+                   MIN(c.created_at) as first_chunk_created
+            FROM pages p
+            LEFT JOIN chunks c ON p.url = c.url
+            WHERE p.url LIKE 'https://www.youtube.com/watch?v=%'
+            GROUP BY p.url, c.url
+            ORDER BY MIN(c.created_at) DESC NULLS LAST
             LIMIT 3
         ''')
-        
+
         for page in processed_pages:
             logger.info(f'  {page["url"]}: {page["status"]}')
-            if page["processed_at"]:
-                logger.info(f'    处理时间: {page["processed_at"]}')
+            if page["first_chunk_created"]:
+                logger.info(f'    首个chunk创建时间: {page["first_chunk_created"]}')
         
         # 检查chunk内容样本
         logger.info('\n=== Chunk内容样本 ===')

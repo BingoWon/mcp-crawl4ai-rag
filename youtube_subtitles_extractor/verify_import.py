@@ -32,13 +32,14 @@ async def verify_data():
         # 查看YouTube数据统计
         logger.info('=== YouTube数据统计 ===')
         stats = await client.fetch_one('''
-            SELECT 
+            SELECT
                 COUNT(*) as total_count,
-                COUNT(CASE WHEN content IS NOT NULL AND content != '' THEN 1 END) as with_content,
-                COUNT(CASE WHEN processed_at IS NULL THEN 1 END) as unprocessed,
-                AVG(LENGTH(content)) as avg_content_length
-            FROM pages 
-            WHERE url LIKE 'https://www.youtube.com/watch?v=%'
+                COUNT(CASE WHEN p.content IS NOT NULL AND p.content != '' THEN 1 END) as with_content,
+                COUNT(CASE WHEN c.url IS NULL THEN 1 END) as unprocessed,
+                AVG(LENGTH(p.content)) as avg_content_length
+            FROM pages p
+            LEFT JOIN (SELECT DISTINCT url FROM chunks WHERE url LIKE 'https://www.youtube.com/watch?v=%') c ON p.url = c.url
+            WHERE p.url LIKE 'https://www.youtube.com/watch?v=%'
         ''')
         
         logger.info(f'总YouTube记录: {stats["total_count"]}')
