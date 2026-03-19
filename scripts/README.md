@@ -1,52 +1,51 @@
-# 数据库索引管理
+# Database Index Management
 
-## 📋 快速开始
+## Quick Start
 
-### 创建所有索引
+### One-command from local machine (recommended)
 ```bash
-# 1. SSH + Screen
-ssh user@198.12.70.36
-screen -S indexes
+# Create all indexes (auto SSH + screen + nohup + sync + load password)
+./scripts/rebuild_indexes_remote.sh
 
-# 2. 复制脚本
-nano create_indexes.sql    # 复制 SQL 内容
-nano run_indexes.sh        # 复制 Shell 内容
-chmod +x run_indexes.sh
+# Check index status
+./scripts/rebuild_indexes_remote.sh check
 
-# 3. 设置密码并执行
-export DB_PASSWORD="XXX"
-./run_indexes.sh create
+# Reattach to running screen session
+./scripts/rebuild_indexes_remote.sh attach
 
-# 4. 分离会话（可选）
-Ctrl+A, D  # 分离
-screen -r indexes  # 重连
+# Tail latest creation log
+./scripts/rebuild_indexes_remote.sh logs
 ```
 
-### 检查索引状态
+The script automatically:
+1. Tests SSH connection (via `apple-rag` in `~/.ssh/config`)
+2. Syncs latest scripts to VPS
+3. Verifies `.env` exists on VPS with database password
+4. Starts a screen + nohup session (survives SSH disconnect AND screen crash)
+5. Loads all database config from `.env` — no manual `export` needed
+
+### Run directly on VPS
 ```bash
-export DB_PASSWORD="your_password"
-./run_indexes.sh check
+cd /root/mcp-crawl4ai-rag
+scripts/run_indexes.sh create   # password auto-loaded from .env
+scripts/run_indexes.sh check    # check index status
 ```
 
 ---
 
-## 📊 索引类型说明
+## Index Types
 
-### 1. Fulltext 全文搜索索引
-**用途**: 技术术语精确匹配搜索
-- 索引名: `idx_chunks_fulltext`
-- 类型: GIN 索引
-- 配置: PostgreSQL 'simple' 配置
-- 大小: ~80-100 MB
-- 创建时间: 10-20 分钟
+### 1. Fulltext Search Index
+**Purpose**: exact match for technical terms
+- Name: `idx_chunks_fulltext`
+- Type: GIN index
+- Config: PostgreSQL 'simple' (no stemming — good for code/API names)
+- Size: ~80-100 MB
+- Creation time: 10-20 minutes
 
-**适用场景**:
-- 搜索技术术语（`@State`, `SecItemAdd`）
-- 搜索 API 函数名
-- 搜索版本信息（`iOS 26 beta`）
-- 搜索发布说明
+**Use cases**: `@State`, `SecItemAdd`, `iOS 26 beta`, API names, release notes
 
-**查询示例**:
+**Query example**:
 ```sql
 SELECT id, url, title, content
 FROM chunks
@@ -55,20 +54,17 @@ WHERE to_tsvector('simple', COALESCE(title, '') || ' ' || content)
 LIMIT 5;
 ```
 
-### 2. HNSW 向量索引
-**用途**: 语义相似度搜索
-- 索引名: `idx_chunks_embedding_hnsw`
-- 类型: HNSW 向量索引
-- 向量维度: halfvec(2560)
-- 大小: ~2.7 GB
-- 创建时间: 2-6 小时
+### 2. HNSW Vector Index
+**Purpose**: semantic similarity search
+- Name: `idx_chunks_embedding_hnsw`
+- Type: HNSW vector index
+- Dimensions: halfvec(2560)
+- Size: ~2.7 GB
+- Creation time: 2-6 hours
 
-**适用场景**:
-- 语义搜索
-- 相似文档查找
-- 混合搜索（与 Fulltext 结合）
+**Use cases**: semantic search, similar document lookup, hybrid search
 
-**查询示例**:
+**Query example**:
 ```sql
 SELECT id, url, content,
        1 - (embedding <=> $1::halfvec) as similarity
@@ -80,181 +76,164 @@ LIMIT 5;
 
 ---
 
-## 🎯 使用场景
+## Usage Scenarios
 
-### 场景 1: 首次创建索引
+### Scenario 1: Rebuild indexes from local
 ```bash
-# 使用交互式菜单
-./run_indexes.sh
+./scripts/rebuild_indexes_remote.sh
 
-# 选择: 1) 创建所有索引
+# Monitor progress
+./scripts/rebuild_indexes_remote.sh attach   # or: ssh apple-rag -t 'screen -r indexes'
+# Detach: Ctrl+A, D
 ```
 
-### 场景 2: 检查索引状态
+### Scenario 2: Check index status
 ```bash
-# 直接执行检查
-./run_indexes.sh check
+./scripts/rebuild_indexes_remote.sh check
 ```
 
-### 场景 3: 重新创建索引
+### Scenario 3: View logs remotely
 ```bash
-# 脚本会自动删除旧索引并重新创建
-./run_indexes.sh create
+./scripts/rebuild_indexes_remote.sh logs
 ```
 
 ---
 
-## ⚙️ 系统要求
+## System Requirements
 
-### 硬件要求
-- **内存**: 至少 3GB 可用内存
-- **磁盘**: 至少 5GB 可用空间
-- **CPU**: 4核推荐
+### Hardware
+- **RAM**: at least 3GB available
+- **Disk**: at least 5GB free space
+- **CPU**: 4 cores recommended
 
-### 软件要求
-- PostgreSQL 客户端（psql）
-- Screen 或 Tmux（推荐）
-
----
-
-## 📈 性能数据
-
-### Fulltext 搜索性能
-- 查询时间: 5-10 ms（使用索引）
-- 无索引时间: 80-100 ms（全表扫描）
-- 性能提升: 10-20 倍
-
-### HNSW 向量搜索性能
-- 查询时间: 5-20 ms（使用索引）
-- 无索引时间: 数秒（全表扫描）
-- 性能提升: 100+ 倍
+### Software
+- PostgreSQL client (psql)
+- screen (on VPS)
 
 ---
 
-## 🔧 配置说明
+## Performance
 
-### 数据库连接配置
-脚本中的默认配置：
+### Fulltext Search
+- With index: 5-10 ms
+- Without: 80-100 ms (full table scan)
+- Improvement: 10-20x
+
+### HNSW Vector Search
+- With index: 5-20 ms
+- Without: several seconds (full table scan)
+- Improvement: 100x+
+
+---
+
+## Configuration
+
+### Database Connection
+Scripts auto-load all config from project `.env`:
 ```bash
-DB_HOST="localhost"
-DB_PORT="5432"
-DB_NAME="apple_rag_db"
-DB_USER="apple_rag_user"
+CLOUD_DB_HOST=75.127.7.212    # defaults to localhost on VPS
+CLOUD_DB_PORT=5432
+CLOUD_DB_DATABASE=apple_rag_db
+CLOUD_DB_USER=apple_rag_user
+CLOUD_DB_PASSWORD=***         # auto-loaded, no manual export
 ```
 
-### 索引创建参数
-SQL 脚本中的优化参数：
+### Index Creation Parameters
+Tuning parameters in `create_indexes.sql`:
 ```sql
 SET maintenance_work_mem = '3GB';
 SET max_parallel_maintenance_workers = 4;
 SET work_mem = '512MB';
 ```
 
-**调整建议**:
-- 内存不足时，降低 `maintenance_work_mem` 到 `1GB`
-- CPU 核心少时，降低 `max_parallel_maintenance_workers` 到 `2`
+**Adjustments**:
+- Low memory: reduce `maintenance_work_mem` to `1GB`
+- Few CPU cores: reduce `max_parallel_maintenance_workers` to `2`
 
 ---
 
-## 🚨 故障排除
+## Troubleshooting
 
-### 问题 1: 数据库连接失败
+### Problem 1: Database connection failed
 ```bash
-# 检查 PostgreSQL 服务
 sudo systemctl status postgresql
-
-# 启动服务
 sudo systemctl start postgresql
-
-# 检查连接
 psql -h localhost -U apple_rag_user -d apple_rag_db
 ```
 
-### 问题 2: 内存不足
-**症状**: 索引创建失败，错误日志显示内存不足
-
-**解决方案**:
-修改 `create_indexes.sql` 中的参数：
+### Problem 2: Out of memory
+Reduce parameters in `create_indexes.sql`:
 ```sql
-SET maintenance_work_mem = '1GB';  -- 降低到 1GB
-SET max_parallel_maintenance_workers = 2;  -- 降低到 2
+SET maintenance_work_mem = '1GB';
+SET max_parallel_maintenance_workers = 2;
 ```
 
-### 问题 3: 磁盘空间不足
-**症状**: 索引创建失败，错误日志显示磁盘空间不足
-
-**解决方案**:
+### Problem 3: Disk space
 ```bash
-# 检查磁盘空间
 df -h
-
-# 清理不必要的文件
-# 确保至少有 5GB 可用空间
+# Ensure at least 5GB free
 ```
 
-### 问题 4: 进程意外终止
+### Problem 4: Process terminated unexpectedly
 ```bash
-# 重新连接 screen 会话
-screen -r indexes
+# Reattach to screen
+./scripts/rebuild_indexes_remote.sh attach
 
-# 查看错误日志
-tail -50 index_logs/error_*.log
+# Check logs
+./scripts/rebuild_indexes_remote.sh logs
 
-# 重新运行（会自动清理旧索引）
-./run_indexes.sh create
+# Re-run (auto-cleans old indexes)
+./scripts/rebuild_indexes_remote.sh
 ```
 
 ---
 
-## 📝 日志文件
+## Log Files
 
-### 日志位置
+### Location
 ```
 index_logs/
-├── creation_YYYYMMDD_HHMMSS.log  # 创建日志
-└── error_YYYYMMDD_HHMMSS.log     # 错误日志
+├── creation_YYYYMMDD_HHMMSS.log  # creation log
+└── error_YYYYMMDD_HHMMSS.log     # error log
 ```
 
-### 查看日志
+### View logs
 ```bash
-# 查看最新创建日志
-tail -f index_logs/creation_*.log
+# From local machine
+./scripts/rebuild_indexes_remote.sh logs
 
-# 查看错误日志
+# On VPS directly
+tail -f index_logs/creation_*.log
 cat index_logs/error_*.log
 ```
 
 ---
 
-## 🎓 最佳实践
+## Best Practices
 
-### 1. 使用持久会话
-**必须**在 screen 或 tmux 中运行，避免网络中断导致索引创建失败。
+### 1. Connection Resilience
+The remote script uses **screen + nohup** double protection:
+- `screen`: allows reattaching to see live output
+- `nohup`: ensures process survives even if screen crashes
 
-### 2. 监控进度
-脚本会自动显示实时进度，包括：
-- 运行时长
-- 活动查询数
-- 索引创建状态
+### 2. Creation Order
+Optimized order: Fulltext first (fast), HNSW second (slow).
+If HNSW fails, Fulltext is already available.
 
-### 3. 创建顺序
-脚本已优化创建顺序：
-1. 先创建 Fulltext 索引（快，10-20分钟）
-2. 再创建 HNSW 索引（慢，2-6小时）
+### 3. Partial Success Reporting
+On failure, the script reports which indexes were successfully created
+and which are missing — no need to guess.
 
-这样即使 HNSW 失败，Fulltext 索引也已创建完成。
-
-### 4. 验证索引
-创建完成后，使用检查命令验证：
+### 4. Verify After Creation
 ```bash
-./run_indexes.sh check
+./scripts/rebuild_indexes_remote.sh check
 ```
 
 ---
 
-## 📚 参考资料
+## References
 
-### PostgreSQL 全文搜索
+### PostgreSQL Full Text Search
 - [PostgreSQL Full Text Search](https://www.postgresql.org/docs/current/textsearch.html)
 - [GIN Indexes](https://www.postgresql.org/docs/current/gin.html)
 
@@ -264,21 +243,32 @@ cat index_logs/error_*.log
 
 ---
 
-## 🔄 版本历史
+## Version History
 
-### v2.0 (当前版本)
-- ✅ 整合 Fulltext + HNSW 索引创建
-- ✅ 优化创建顺序（快速索引优先）
-- ✅ 精确索引删除逻辑（避免误删）
-- ✅ 统一的进度监控
-- ✅ 简化文件结构（3个文件）
+### v3.1 (current)
+- Fixed: monitoring query crash when index doesn't exist yet
+- Fixed: exit code capture failure under `set -e`
+- Fixed: psql output parsing (now uses proper `|` delimiter)
+- Added: nohup inside screen for double SSH-disconnect protection
+- Added: `attach` and `logs` subcommands
+- Added: .env verification on VPS before running
+- Added: partial success reporting on failure
+- Improved: connection method cached (no repeated probe per query)
+- Improved: all DB config loaded from .env (not just password)
 
-### v1.0 (已废弃)
-- 分离的 HNSW 索引创建脚本
-- 无 Fulltext 索引支持
+### v3.0
+- One-command remote execution (`rebuild_indexes_remote.sh`)
+- Auto-load database password from `.env`
+- Auto-sync scripts to VPS
+- Auto-manage screen session
+
+### v2.0
+- Combined Fulltext + HNSW index creation
+- Optimized creation order (fast index first)
+- Precise index deletion (exact name match)
+- Unified progress monitoring
 
 ---
 
-**文档版本**: v2.0  
-**最后更新**: 2025-10-09
-
+**Doc version**: v3.1
+**Last updated**: 2026-03-19

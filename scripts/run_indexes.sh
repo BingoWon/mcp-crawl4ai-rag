@@ -1,169 +1,223 @@
 #!/bin/bash
 
 # ============================================================================
-# 数据库索引管理脚本
-# 功能：创建索引、检查状态、监控进度
+# Database Index Management Script
+# Functions: create indexes, check status, monitor progress
 # ============================================================================
 
 set -e
 
-# 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# 日志函数
-log_info() { echo -e "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
+log_info()     { echo -e "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
+log_success()  { echo -e "${GREEN}[SUCCESS]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
+log_warning()  { echo -e "${YELLOW}[WARNING]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
+log_error()    { echo -e "${RED}[ERROR]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_progress() { echo -e "${GREEN}[PROGRESS]${NC} $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 
-# 数据库配置
-DB_HOST="localhost"
-DB_PORT="5432"
-DB_NAME="apple_rag_db"
-DB_USER="apple_rag_user"
-DB_PASSWORD="${DB_PASSWORD:-}"
-DOCKER_CONTAINER="postgres_db"
+# --------------------------------------------------------------------------
+# Load config from .env
+# --------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${SCRIPT_DIR%/scripts}"
+ENV_FILE="$PROJECT_ROOT/.env"
 
-# 检测是否在 Docker 环境中
-detect_db_connection_method() {
-    if docker ps | grep -q "$DOCKER_CONTAINER"; then
-        echo "docker"
-    elif PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
-        echo "direct"
-    else
-        echo "unknown"
+load_env_var() {
+    local var_name="$1"
+    local default="$2"
+    local value
+    if [ -f "$ENV_FILE" ]; then
+        value=$(grep -E "^${var_name}=" "$ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'")
     fi
+    echo "${value:-$default}"
 }
 
-# 执行数据库查询（自动选择连接方式）
+DB_HOST=$(load_env_var "CLOUD_DB_HOST" "localhost")
+DB_PORT=$(load_env_var "CLOUD_DB_PORT" "5432")
+DB_NAME=$(load_env_var "CLOUD_DB_DATABASE" "apple_rag_db")
+DB_USER=$(load_env_var "CLOUD_DB_USER" "apple_rag_user")
+DB_PASSWORD="${DB_PASSWORD:-$(load_env_var "CLOUD_DB_PASSWORD" "")}"
+DOCKER_CONTAINER="postgres_db"
+
+if [ -n "$DB_PASSWORD" ] && [ -f "$ENV_FILE" ]; then
+    log_info "Loaded database config from .env"
+fi
+
+# --------------------------------------------------------------------------
+# Connection detection (cached)
+# --------------------------------------------------------------------------
+CACHED_CONNECTION_METHOD=""
+
+detect_db_connection_method() {
+    if [ -n "$CACHED_CONNECTION_METHOD" ]; then
+        echo "$CACHED_CONNECTION_METHOD"
+        return
+    fi
+
+    if docker ps 2>/dev/null | grep -q "$DOCKER_CONTAINER"; then
+        CACHED_CONNECTION_METHOD="docker"
+    elif PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
+        CACHED_CONNECTION_METHOD="direct"
+    else
+        CACHED_CONNECTION_METHOD="unknown"
+    fi
+    echo "$CACHED_CONNECTION_METHOD"
+}
+
 execute_db_query() {
     local query="$1"
-    local connection_method=$(detect_db_connection_method)
+    local method
+    method=$(detect_db_connection_method)
 
-    case "$connection_method" in
+    case "$method" in
         docker)
-            docker exec "$DOCKER_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -c "$query" 2>/dev/null
+            docker exec "$DOCKER_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -A -F'|' -c "$query" 2>/dev/null
             ;;
         direct)
-            PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "$query" 2>/dev/null
+            PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -A -F'|' -c "$query" 2>/dev/null
             ;;
         *)
-            echo ""
             return 1
             ;;
     esac
 }
 
-# 实时监控索引创建进度
+# --------------------------------------------------------------------------
+# Monitor index creation progress
+# --------------------------------------------------------------------------
 monitor_index_progress() {
-    local log_file="$1"
-    local psql_pid="$2"
-    local start_time=$(date +%s)
-    local connection_method=$(detect_db_connection_method)
+    local psql_pid="$1"
+    local start_time
+    start_time=$(date +%s)
+    local method
+    method=$(detect_db_connection_method)
 
-    log_progress "开始监控索引创建进度（连接方式: $connection_method）..."
+    log_progress "Monitoring index creation (connection: $method)..."
 
     while kill -0 "$psql_pid" 2>/dev/null; do
-        local current_time=$(date +%s)
-        local elapsed=$((current_time - start_time))
-        local hours=$((elapsed / 3600))
-        local minutes=$(((elapsed % 3600) / 60))
-        local seconds=$((elapsed % 60))
+        local now elapsed hours minutes seconds
+        now=$(date +%s)
+        elapsed=$((now - start_time))
+        hours=$((elapsed / 3600))
+        minutes=$(((elapsed % 3600) / 60))
+        seconds=$((elapsed % 60))
 
-        # 检查数据库状态
-        local db_status="连接失败"
-        local active_queries="0"
-        local fulltext_exists="未知"
-        local hnsw_exists="未知"
-        local hnsw_size="0"
+        local db_ok=false
+        local active_queries="?"
+        local fulltext_status="?"
+        local hnsw_status="?"
+        local hnsw_size="-"
 
-        # 使用统一的查询执行函数
+        # Safe query: avoids ::regclass cast that throws when index missing
         if db_result=$(execute_db_query "
             SELECT
-                COUNT(*) FILTER (WHERE state = 'active' AND query ILIKE '%CREATE INDEX%') as active_queries,
-                CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename = 'chunks' AND indexname = 'idx_chunks_fulltext')
-                     THEN '✅' ELSE '🔄' END as fulltext_status,
-                CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename = 'chunks' AND indexname = 'idx_chunks_embedding_hnsw')
-                     THEN '✅' ELSE '🔄' END as hnsw_status,
-                COALESCE(pg_size_pretty(pg_relation_size('idx_chunks_embedding_hnsw'::regclass)), '0 bytes') as hnsw_size
-            FROM pg_stat_activity
-            WHERE datname = current_database()
-        "); then
-            db_status="✅"
-            active_queries=$(echo "$db_result" | awk '{print $1}')
-            fulltext_exists=$(echo "$db_result" | awk '{print $2}')
-            hnsw_exists=$(echo "$db_result" | awk '{print $3}')
-            hnsw_size=$(echo "$db_result" | awk '{print $4}')
+                (SELECT COUNT(*) FROM pg_stat_activity
+                 WHERE datname = current_database()
+                   AND state = 'active'
+                   AND query ILIKE '%CREATE INDEX%') as active_creates,
+                CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename='chunks' AND indexname='idx_chunks_fulltext')
+                     THEN 'YES' ELSE 'NO' END as ft,
+                CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename='chunks' AND indexname='idx_chunks_embedding_hnsw')
+                     THEN 'YES' ELSE 'NO' END as hnsw,
+                COALESCE((SELECT pg_size_pretty(pg_relation_size(c.oid))
+                          FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                          WHERE c.relname='idx_chunks_embedding_hnsw' AND n.nspname='public'), '-') as hnsw_sz
+        " 2>/dev/null); then
+            db_ok=true
+            active_queries=$(echo "$db_result" | head -1 | awk -F'|' '{gsub(/^ +| +$/,"",$1); print $1}')
+            fulltext_status=$(echo "$db_result" | head -1 | awk -F'|' '{gsub(/^ +| +$/,"",$2); print $2}')
+            hnsw_status=$(echo "$db_result" | head -1 | awk -F'|' '{gsub(/^ +| +$/,"",$3); print $3}')
+            hnsw_size=$(echo "$db_result" | head -1 | awk -F'|' '{gsub(/^ +| +$/,"",$4); print $4}')
         fi
 
-        # 显示进度
-        echo "${GREEN}[PROGRESS]${NC} $(date '+%H:%M:%S') | 运行时长: ${hours}h${minutes}m${seconds}s"
-        echo "  数据库: $db_status | 活动查询: $active_queries | 连接: $connection_method"
-        echo "  Fulltext索引: $fulltext_exists | HNSW索引: $hnsw_exists ($hnsw_size)"
+        local ft_icon="🔄"
+        local hnsw_icon="🔄"
+        [[ "$fulltext_status" == "YES" ]] && ft_icon="✅"
+        [[ "$hnsw_status" == "YES" ]] && hnsw_icon="✅"
 
-        # 检查是否完成
-        if [[ "$fulltext_exists" == "✅" ]] && [[ "$hnsw_exists" == "✅" ]]; then
-            echo -e "${GREEN}[PROGRESS]${NC} 所有索引创建完成！"
+        echo -e "${GREEN}[PROGRESS]${NC} $(date '+%H:%M:%S') | Runtime: ${hours}h${minutes}m${seconds}s"
+        if [ "$db_ok" = true ]; then
+            echo -e "  DB: ✅ | Active CREATE INDEX queries: $active_queries"
+        else
+            echo -e "  DB: ⚠️  monitor query failed (index creation still running)"
+        fi
+        echo -e "  Fulltext: $ft_icon | HNSW: $hnsw_icon ($hnsw_size)"
+
+        if [[ "$fulltext_status" == "YES" ]] && [[ "$hnsw_status" == "YES" ]]; then
+            echo -e "${GREEN}[PROGRESS]${NC} All indexes created!"
             break
         fi
 
         echo "----------------------------------------"
-        sleep 10
+        sleep 15
     done
 }
 
-# 创建索引
+# --------------------------------------------------------------------------
+# Create indexes
+# --------------------------------------------------------------------------
 create_indexes() {
-    log_info "开始创建索引流程..."
+    log_info "Starting index creation..."
 
-    # 检查持久会话
-    if [ -z "$STY" ] && [ -z "$TMUX" ]; then
-        log_warning "未检测到持久会话，强烈建议使用 screen 或 tmux"
-        read -p "是否继续？(y/N): " -n 1 -r
+    # Skip interactive prompt when running non-interactively (e.g. from nohup/pipe)
+    if [ -z "$STY" ] && [ -z "$TMUX" ] && [ -t 0 ]; then
+        log_warning "No persistent session detected (screen/tmux recommended)"
+        read -p "Continue anyway? (y/N): " -n 1 -r
         echo
         [[ ! $REPLY =~ ^[Yy]$ ]] && exit 0
     fi
 
-    # 检测连接方式
-    local connection_method=$(detect_db_connection_method)
-    log_info "检测到数据库连接方式: $connection_method"
+    local method
+    method=$(detect_db_connection_method)
+    log_info "Database connection method: $method"
 
-    if [ "$connection_method" == "unknown" ]; then
-        log_error "无法连接数据库（尝试了 Docker 和直接连接）"
+    if [ "$method" == "unknown" ]; then
+        log_error "Cannot connect to database (tried Docker and direct)"
+        log_error "  Host=$DB_HOST Port=$DB_PORT User=$DB_USER DB=$DB_NAME"
+        [ -z "$DB_PASSWORD" ] && log_error "  DB_PASSWORD is empty - check .env file"
         exit 1
     fi
-    log_success "数据库连接成功（方式: $connection_method）"
+    log_success "Database connected ($method)"
 
-    # 获取数据量
-    local total_chunks=$(execute_db_query "SELECT COUNT(*) FROM chunks;" | tr -d ' ')
-    local embedding_chunks=$(execute_db_query "SELECT COUNT(*) FROM chunks WHERE embedding IS NOT NULL;" | tr -d ' ')
-    
-    log_info "数据量: 总记录 ${total_chunks} 条，有embedding ${embedding_chunks} 条"
-    log_warning "预估时间: Fulltext 10-20分钟 + HNSW 2-6小时"
+    local total_chunks embedding_chunks
+    total_chunks=$(execute_db_query "SELECT COUNT(*) FROM chunks;" | tr -d ' |')
+    embedding_chunks=$(execute_db_query "SELECT COUNT(*) FROM chunks WHERE embedding IS NOT NULL;" | tr -d ' |')
 
-    # 创建日志目录
-    local log_dir="index_logs"
+    log_info "Data: ${total_chunks} total chunks, ${embedding_chunks} with embeddings"
+    log_warning "Estimated time: Fulltext 10-20min + HNSW 2-6 hours"
+
+    local log_dir="$PROJECT_ROOT/index_logs"
     mkdir -p "$log_dir"
-    local timestamp=$(date '+%Y%m%d_%H%M%S')
+    local timestamp
+    timestamp=$(date '+%Y%m%d_%H%M%S')
     local log_file="$log_dir/creation_$timestamp.log"
     local error_log="$log_dir/error_$timestamp.log"
 
-    log_info "日志文件: $log_file"
+    log_info "Log file: $log_file"
 
-    # 执行索引创建（根据连接方式选择）
-    {
-        if [ "$connection_method" == "docker" ]; then
+    local sql_file="$SCRIPT_DIR/create_indexes.sql"
+    if [ ! -f "$sql_file" ]; then
+        log_error "SQL file not found: $sql_file"
+        exit 1
+    fi
+
+    local exit_code_file
+    exit_code_file=$(mktemp "/tmp/psql_exit_code_$$.XXXXXX")
+
+    # Run psql in background; disable set -e inside subshell so exit code is captured
+    (
+        set +e
+        if [ "$method" == "docker" ]; then
             docker exec -i "$DOCKER_CONTAINER" psql \
                 -U "$DB_USER" \
                 -d "$DB_NAME" \
                 -v ON_ERROR_STOP=1 \
                 --echo-queries \
-                < "create_indexes.sql" \
+                < "$sql_file" \
                 > "$log_file" 2> "$error_log"
         else
             PGPASSWORD="$DB_PASSWORD" psql \
@@ -171,98 +225,127 @@ create_indexes() {
                 -p "$DB_PORT" \
                 -U "$DB_USER" \
                 -d "$DB_NAME" \
-                -f "create_indexes.sql" \
+                -f "$sql_file" \
                 -v ON_ERROR_STOP=1 \
                 --echo-queries \
                 > "$log_file" 2> "$error_log"
         fi
-        echo $? > /tmp/psql_exit_code
-    } &
+        echo $? > "$exit_code_file"
+    ) &
 
     local psql_pid=$!
-    monitor_index_progress "$log_file" "$psql_pid"
-    wait $psql_pid
+    monitor_index_progress "$psql_pid"
+    wait $psql_pid 2>/dev/null || true
 
-    local exit_code=$(cat /tmp/psql_exit_code 2>/dev/null || echo "1")
-    rm -f /tmp/psql_exit_code
+    local exit_code
+    exit_code=$(cat "$exit_code_file" 2>/dev/null || echo "1")
+    rm -f "$exit_code_file"
 
-    if [ $exit_code -eq 0 ]; then
-        log_success "🎉 所有索引创建完成！"
-        log_info "详细日志: $log_file"
+    # Check partial success even on failure
+    local ft_exists hnsw_exists
+    ft_exists=$(execute_db_query "SELECT CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename='chunks' AND indexname='idx_chunks_fulltext') THEN 'YES' ELSE 'NO' END;" 2>/dev/null | tr -d ' |')
+    hnsw_exists=$(execute_db_query "SELECT CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename='chunks' AND indexname='idx_chunks_embedding_hnsw') THEN 'YES' ELSE 'NO' END;" 2>/dev/null | tr -d ' |')
+
+    if [ "$exit_code" -eq 0 ]; then
+        log_success "All indexes created successfully!"
+        log_info "Log: $log_file"
     else
-        log_error "索引创建失败，退出码: $exit_code"
-        log_error "错误日志: $error_log"
-        exit $exit_code
+        log_error "Index creation failed (exit code: $exit_code)"
+        log_error "Error log: $error_log"
+        echo ""
+        log_info "=== Partial Result ==="
+        if [ "$ft_exists" = "YES" ]; then
+            log_success "  Fulltext index: created successfully"
+        else
+            log_error "  Fulltext index: MISSING"
+        fi
+        if [ "$hnsw_exists" = "YES" ]; then
+            log_success "  HNSW index: created successfully"
+        else
+            log_error "  HNSW index: MISSING"
+        fi
+        exit "$exit_code"
     fi
 }
 
-# 检查索引状态
+# --------------------------------------------------------------------------
+# Check index status
+# --------------------------------------------------------------------------
 check_indexes() {
-    log_info "检查索引状态..."
+    log_info "Checking index status..."
 
-    local connection_method=$(detect_db_connection_method)
-    log_info "使用连接方式: $connection_method"
+    local method
+    method=$(detect_db_connection_method)
+    log_info "Connection method: $method"
 
-    local query='
-SELECT '\''=== Chunks Table Indexes ==='\'' as header;
+    if [ "$method" == "unknown" ]; then
+        log_error "Cannot connect to database"
+        exit 1
+    fi
+
+    local query="
+SELECT '=== Chunks Table Indexes ===' as header;
 
 SELECT
     indexname,
     pg_size_pretty(pg_relation_size(indexname::regclass)) as size,
     CASE
-        WHEN indexdef ILIKE '\''%hnsw%'\'' THEN '\''HNSW Vector'\''
-        WHEN indexdef ILIKE '\''%gin%'\'' AND indexdef ILIKE '\''%to_tsvector%'\'' THEN '\''Fulltext Search'\''
-        WHEN indexdef ILIKE '\''%btree%'\'' THEN '\''B-tree'\''
-        ELSE '\''Other'\''
+        WHEN indexdef ILIKE '%hnsw%' THEN 'HNSW Vector'
+        WHEN indexdef ILIKE '%gin%' AND indexdef ILIKE '%to_tsvector%' THEN 'Fulltext Search'
+        WHEN indexdef ILIKE '%btree%' THEN 'B-tree'
+        ELSE 'Other'
     END as type
 FROM pg_indexes
-WHERE tablename = '\''chunks'\''
+WHERE tablename = 'chunks'
 ORDER BY indexname;
 
-SELECT '\''=== Index Status ==='\'' as header;
+SELECT '=== Index Status ===' as header;
 
 SELECT
-    CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename = '\''chunks'\'' AND indexname = '\''idx_chunks_fulltext'\'')
-         THEN '\''✅ Fulltext index exists'\'' ELSE '\''❌ Fulltext index missing'\'' END as fulltext_status,
-    CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename = '\''chunks'\'' AND indexname = '\''idx_chunks_embedding_hnsw'\'')
-         THEN '\''✅ HNSW index exists'\'' ELSE '\''❌ HNSW index missing'\'' END as hnsw_status;
-'
+    CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename='chunks' AND indexname='idx_chunks_fulltext')
+         THEN '✅ Fulltext index exists' ELSE '❌ Fulltext index missing' END as fulltext_status,
+    CASE WHEN EXISTS(SELECT 1 FROM pg_indexes WHERE tablename='chunks' AND indexname='idx_chunks_embedding_hnsw')
+         THEN '✅ HNSW index exists' ELSE '❌ HNSW index missing' END as hnsw_status;
+"
 
-    if [ "$connection_method" == "docker" ]; then
+    if [ "$method" == "docker" ]; then
         docker exec "$DOCKER_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "$query"
     else
         PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "$query"
     fi
 }
 
-# 主菜单
+# --------------------------------------------------------------------------
+# Interactive menu
+# --------------------------------------------------------------------------
 show_menu() {
     echo ""
     echo "============================================================================"
-    echo "                    数据库索引管理"
+    echo "                    Database Index Management"
     echo "============================================================================"
-    echo "1) 创建所有索引（Fulltext + HNSW）"
-    echo "2) 检查索引状态"
-    echo "3) 退出"
+    echo "1) Create all indexes (Fulltext + HNSW)"
+    echo "2) Check index status"
+    echo "3) Exit"
     echo "============================================================================"
-    read -p "请选择操作 [1-3]: " choice
+    read -p "Select [1-3]: " choice
 
     case $choice in
         1) create_indexes ;;
         2) check_indexes ;;
-        3) log_info "退出"; exit 0 ;;
-        *) log_error "无效选择"; show_menu ;;
+        3) log_info "Exit"; exit 0 ;;
+        *) log_error "Invalid choice"; show_menu ;;
     esac
 }
 
-# 主程序
+# --------------------------------------------------------------------------
+# Main
+# --------------------------------------------------------------------------
 if [ $# -eq 0 ]; then
     show_menu
 else
     case "$1" in
         create) create_indexes ;;
-        check) check_indexes ;;
-        *) log_error "用法: $0 [create|check]"; exit 1 ;;
+        check)  check_indexes ;;
+        *)      log_error "Usage: $0 [create|check]"; exit 1 ;;
     esac
 fi
-
