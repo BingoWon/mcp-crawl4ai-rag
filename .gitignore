@@ -6,7 +6,6 @@ repos
 .claude
 
 tests/output/*
-*.md
 *.txt
 *.log*
 *.json

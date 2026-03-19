@@ -196,7 +196,8 @@ class APIKeyManager:
                     continue
 
                 api_key, balance, status = result
-                key_short = f"{api_key[:8]}...{api_key[-8:]}"
+                # key_short = f"{api_key[:8]}...{api_key[-8:]}"
+                key_short = f"{api_key}"
 
                 results[api_key] = {
                     "balance": balance,
